@@ -1,0 +1,100 @@
+// MealTrace Digital — Firestore Security Rules
+// Deploy with: firebase deploy --only firestore:rules
+//
+// These rules enforce role-based access at the database level.
+// The backend (running with Admin SDK) bypasses these rules,
+// but they protect against direct client-side Firestore access.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ── Helper Functions ──
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Get user's custom claims (set via Firebase Admin SDK)
+    function getUserRole() {
+      return request.auth.token.role;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && getUserRole() == 'SUPER_ADMIN';
+    }
+
+    function isVendor() {
+      return isAuthenticated() && getUserRole() == 'VENDOR';
+    }
+
+    function isResident() {
+      return isAuthenticated() && getUserRole() == 'RESIDENT';
+    }
+
+    // ── Collection Rules ──
+
+    // RESIDENTS — Residents can read own doc, admins can read/write all
+    match /residents/{residentId} {
+      allow read: if isAuthenticated() &&
+        (request.auth.uid == residentId || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // SITES — Vendors and admins can read, only admins can write
+    match /sites/{siteId} {
+      allow read: if isAuthenticated() && (isVendor() || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // PLANS — Anyone authenticated can read (for plan selection UI)
+    match /plans/{planId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // SCAN_LOGS — Vendors can create, residents can read own, admins full access
+    match /scan_logs/{logId} {
+      allow read: if isAuthenticated() &&
+        (resource.data.resident_id == request.auth.uid || isVendor() || isAdmin());
+      allow create: if isAuthenticated() && (isVendor() || isAdmin());
+      allow update, delete: if isAdmin();
+    }
+
+    // PAYMENTS — Residents can read own, admins full access
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() &&
+        (resource.data.resident_id == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // GUEST_PASSES — Residents can read own, admins full access
+    match /guest_passes/{passId} {
+      allow read: if isAuthenticated() &&
+        (resource.data.resident_id == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // ADMIN_USERS — Only admins can read/write
+    match /admin_users/{userId} {
+      allow read, write: if isAdmin();
+    }
+
+    // CREDIT_OVERRIDES — Only admins
+    match /credit_overrides/{overrideId} {
+      allow read, write: if isAdmin();
+    }
+
+    // HEALTH CHECK — Backend only (admin SDK bypasses rules)
+    match /_health/{doc} {
+      allow read, write: if false; // Only accessible via Admin SDK
+    }
+
+    // DEFAULT — Deny everything else
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
