@@ -34,6 +34,12 @@ class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
 
+class ChangePasswordRequest(BaseModel):
+    """Change password for the currently authenticated user."""
+    current_password: str
+    new_password: str  # Min 6 chars (Firebase requirement)
+
+
 class RefreshTokenRequest(BaseModel):
     """Refresh an access token."""
     refresh_token: str

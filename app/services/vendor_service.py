@@ -238,3 +238,34 @@ def delete_vendor(vendor_id: str) -> bool:
 
     logger.info(f"Vendor deactivated: {vendor_id}")
     return True
+
+
+def get_vendor_self_profile(vendor_id: str) -> Optional[VendorProfile]:
+    """Get the vendor's own profile using their JWT user_id."""
+    return get_vendor(vendor_id)
+
+
+def get_vendor_assigned_sites(vendor_id: str) -> list:
+    """
+    Get the sites assigned to a vendor (for scanner app site picker).
+    Returns full site info including meal windows.
+    """
+    db = get_db()
+    doc = db.collection("admin_users").document(vendor_id).get()
+    if not doc.exists or doc.to_dict().get("role") != "VENDOR":
+        return []
+
+    assigned_ids = doc.to_dict().get("assigned_site_ids", [])
+    sites = []
+    for sid in assigned_ids:
+        site_doc = db.collection("sites").document(sid).get()
+        if site_doc.exists:
+            sdata = site_doc.to_dict()
+            sites.append({
+                "id": sid,
+                "name": sdata.get("name", ""),
+                "meal_windows": sdata.get("meal_windows", {}),
+                "is_active": sdata.get("is_active", True),
+            })
+
+    return sites

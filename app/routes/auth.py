@@ -16,6 +16,7 @@ from app.models.auth import (
     LoginRequest,
     RegisterRequest,
     ForgotPasswordRequest,
+    ChangePasswordRequest,
     RefreshTokenRequest,
     TokenResponse,
     AuthStatusResponse,
@@ -27,6 +28,7 @@ from app.services.auth_service import (
     update_fcm_token,
     register_resident,
     send_password_reset,
+    change_password,
 )
 from app.middleware.auth import get_current_user
 from fastapi import Depends
@@ -132,3 +134,24 @@ async def update_fcm(
         raise HTTPException(status_code=404, detail="User not found")
 
     return APIResponse(status="success", message="FCM token updated")
+
+
+@router.post("/change-password", response_model=AuthStatusResponse)
+async def change_pwd(
+    request: ChangePasswordRequest,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Change password for the currently authenticated user.
+    Requires the current password and a new password (min 6 chars).
+    """
+    user_id = current_user["sub"]
+    email = current_user.get("email", "")
+    try:
+        change_password(user_id, email, request.current_password, request.new_password)
+        return AuthStatusResponse(
+            status="success",
+            message="Password changed successfully.",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

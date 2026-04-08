@@ -3,11 +3,13 @@
 Resident-facing endpoints.
 
 GET   /resident/profile        — Current resident's profile
+PATCH /resident/profile        — Self-edit profile (name, phone, room)
 GET   /resident/qr-code        — Generate/retrieve signed QR code
 GET   /resident/balance        — Current credit balance
 GET   /resident/transactions   — Paginated scan history
 GET   /resident/subscription   — Current plan subscription details
 POST  /resident/subscribe      — Subscribe to a meal plan with selected meals
+GET   /resident/guest-passes   — List of all guest passes (active + used)
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -17,6 +19,8 @@ from app.models.resident import (
     ResidentBalance,
     SubscriptionInfo,
     SubscribeRequest,
+    UpdateSelfProfileRequest,
+    GuestPassInfo,
     QRCodeResponse,
     TransactionListResponse,
 )
@@ -28,6 +32,8 @@ from app.services.resident_service import (
     get_transactions,
     get_subscription,
     subscribe_to_plan,
+    update_self_profile,
+    get_guest_passes,
 )
 
 router = APIRouter(prefix="/resident", tags=["Resident"])
@@ -115,3 +121,31 @@ async def resident_subscribe(
         return subscribe_to_plan(user_id, request.plan_id, request.selected_meals)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.patch("/profile", response_model=ResidentProfile)
+async def resident_self_edit(
+    request: UpdateSelfProfileRequest,
+    current_user: dict = Depends(require_resident),
+):
+    """
+    Self-edit profile — residents can update their name, phone, room number.
+    Cannot change email, site, status, or plan.
+    """
+    user_id = current_user["sub"]
+    result = update_self_profile(user_id, request.model_dump())
+    if result is None:
+        raise HTTPException(status_code=404, detail="Resident not found")
+    return result
+
+
+@router.get("/guest-passes", response_model=list[GuestPassInfo])
+async def resident_guest_passes(
+    current_user: dict = Depends(require_resident),
+):
+    """
+    List all guest passes for the resident (active + used).
+    Ordered by most recent first.
+    """
+    user_id = current_user["sub"]
+    return get_guest_passes(user_id)

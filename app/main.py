@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
-from app.routes import auth, resident, scan, payment, site, admin, dev
+from app.routes import auth, resident, scan, payment, site, admin, vendor, dev
 
 
 # ── Logging ──
@@ -98,6 +98,7 @@ app.include_router(resident.router)
 app.include_router(scan.router)
 app.include_router(payment.router)
 app.include_router(site.router)
+app.include_router(vendor.router)
 app.include_router(admin.router)
 
 # Dev routes (only in development)

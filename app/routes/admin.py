@@ -45,12 +45,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from app.models.resident import (
     ResidentProfile,
     ResidentListResponse,
     CreateResidentRequest,
     UpdateResidentRequest,
+    TransactionListResponse,
+    SubscribeRequest,
+    SubscriptionInfo,
 )
 from app.models.vendor import (
     VendorProfile,
@@ -58,7 +62,13 @@ from app.models.vendor import (
     CreateVendorRequest,
     UpdateVendorRequest,
 )
-from app.models.payment import CreditOverrideRequest, CreditOverrideResponse
+from app.models.payment import (
+    CreditOverrideRequest,
+    CreditOverrideResponse,
+    PlanInfo,
+    CreatePlanRequest,
+    UpdatePlanRequest,
+)
 from app.models.common import APIResponse
 from app.middleware.auth import require_admin
 from app.services.resident_service import (
@@ -69,6 +79,9 @@ from app.services.resident_service import (
     delete_resident,
     bulk_import_residents,
     get_residents_by_site,
+    get_transactions,
+    subscribe_to_plan,
+    get_subscription,
 )
 from app.services.vendor_service import (
     create_vendor,
@@ -654,3 +667,266 @@ async def admin_scan_feed(
         })
 
     return {"feed": feed, "count": len(feed)}
+
+
+# ═══════════════════════════════════════
+# RESIDENT TRANSACTIONS (Admin View)
+# ═══════════════════════════════════════
+
+@router.get("/residents/{resident_id}/transactions", response_model=TransactionListResponse)
+async def admin_resident_transactions(
+    resident_id: str,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Get a specific resident's scan/transaction history (admin view).
+    Used when admin clicks on a resident to see their activity.
+    """
+    return get_transactions(resident_id, page=page, page_size=page_size)
+
+
+@router.post("/residents/{resident_id}/subscribe", response_model=SubscriptionInfo)
+async def admin_subscribe_resident(
+    resident_id: str,
+    request: SubscribeRequest,
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Admin subscribes a resident to a meal plan with selected meals.
+
+    Useful when PG owner manages subscriptions on behalf of residents.
+    """
+    try:
+        return subscribe_to_plan(resident_id, request.plan_id, request.selected_meals)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+# ═══════════════════════════════════════
+# PLAN CRUD (Admin)
+# ═══════════════════════════════════════
+
+@router.get("/plans", response_model=list[PlanInfo])
+async def admin_list_plans(
+    current_user: dict = Depends(require_admin),
+):
+    """List all plans (including inactive ones, unlike the public /plans endpoint)."""
+    db = get_db()
+    docs = db.collection("plans").get()
+
+    plans = []
+    for doc in docs:
+        data = doc.to_dict()
+        plans.append(PlanInfo(
+            id=doc.id,
+            name=data.get("name", ""),
+            meals_per_day=data.get("meals_per_day", 1),
+            meal_count=data.get("meal_count", 0),
+            duration_days=data.get("duration_days", 30),
+            price=data.get("price", 0),
+            description=data.get("description"),
+            is_active=data.get("is_active", True),
+        ))
+
+    return plans
+
+
+@router.post("/plans", response_model=PlanInfo, status_code=201)
+async def admin_create_plan(
+    request: CreatePlanRequest,
+    current_user: dict = Depends(require_admin),
+):
+    """Create a new meal plan."""
+    import uuid as _uuid
+
+    if request.meals_per_day not in (1, 2, 3):
+        raise HTTPException(status_code=400, detail="meals_per_day must be 1, 2, or 3")
+
+    db = get_db()
+    plan_id = f"plan_{_uuid.uuid4().hex[:8]}"
+    now = datetime.now(timezone.utc)
+
+    doc_data = {
+        "name": request.name,
+        "meals_per_day": request.meals_per_day,
+        "meal_count": request.meal_count,
+        "duration_days": request.duration_days,
+        "price": request.price,
+        "description": request.description,
+        "is_active": True,
+        "created_at": now,
+    }
+
+    db.collection("plans").document(plan_id).set(doc_data)
+
+    return PlanInfo(id=plan_id, **doc_data)
+
+
+@router.patch("/plans/{plan_id}", response_model=PlanInfo)
+async def admin_update_plan(
+    plan_id: str,
+    request: UpdatePlanRequest,
+    current_user: dict = Depends(require_admin),
+):
+    """Update a meal plan (partial update)."""
+    db = get_db()
+    doc_ref = db.collection("plans").document(plan_id)
+    doc = doc_ref.get()
+
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
+
+    clean_updates = {k: v for k, v in request.model_dump().items() if v is not None}
+
+    if "meals_per_day" in clean_updates and clean_updates["meals_per_day"] not in (1, 2, 3):
+        raise HTTPException(status_code=400, detail="meals_per_day must be 1, 2, or 3")
+
+    if clean_updates:
+        doc_ref.update(clean_updates)
+
+    # Return updated plan
+    updated = doc_ref.get().to_dict()
+    return PlanInfo(
+        id=plan_id,
+        name=updated.get("name", ""),
+        meals_per_day=updated.get("meals_per_day", 1),
+        meal_count=updated.get("meal_count", 0),
+        duration_days=updated.get("duration_days", 30),
+        price=updated.get("price", 0),
+        description=updated.get("description"),
+        is_active=updated.get("is_active", True),
+    )
+
+
+@router.delete("/plans/{plan_id}", response_model=APIResponse)
+async def admin_delete_plan(
+    plan_id: str,
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Soft-delete a plan — sets is_active to False.
+    Does NOT remove the plan (existing subscriptions may reference it).
+    """
+    db = get_db()
+    doc_ref = db.collection("plans").document(plan_id)
+    doc = doc_ref.get()
+
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail=f"Plan {plan_id} not found")
+
+    doc_ref.update({"is_active": False})
+
+    return APIResponse(
+        status="success",
+        message=f"Plan {plan_id} deactivated.",
+    )
+
+
+# ═══════════════════════════════════════
+# CREDIT OVERRIDES AUDIT LOG
+# ═══════════════════════════════════════
+
+@router.get("/credit-overrides")
+async def admin_credit_overrides_log(
+    resident_id: Optional[str] = Query(None, description="Filter by resident"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Audit log of all manual credit overrides.
+    Shows who changed what, when, and why.
+    """
+    db = get_db()
+
+    query = db.collection("credit_overrides")
+    if resident_id:
+        query = query.where("resident_id", "==", resident_id)
+
+    all_docs = query.get()
+
+    # Sort by timestamp descending (client-side)
+    sorted_docs = sorted(
+        all_docs,
+        key=lambda d: d.to_dict().get("timestamp", datetime.min.replace(tzinfo=timezone.utc)),
+        reverse=True,
+    )
+
+    total = len(sorted_docs)
+    offset = (page - 1) * page_size
+    page_docs = sorted_docs[offset: offset + page_size]
+
+    overrides = []
+    for doc in page_docs:
+        data = doc.to_dict()
+        overrides.append({
+            "id": doc.id,
+            "resident_id": data.get("resident_id"),
+            "admin_id": data.get("admin_id"),
+            "previous_balance": data.get("previous_balance"),
+            "new_balance": data.get("new_balance"),
+            "amount": data.get("amount"),
+            "reason": data.get("reason"),
+            "timestamp": str(data.get("timestamp")),
+        })
+
+    return {
+        "overrides": overrides,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_more": (offset + page_size) < total,
+    }
+
+
+# ═══════════════════════════════════════
+# BROADCAST NOTIFICATION
+# ═══════════════════════════════════════
+
+class BroadcastRequest(BaseModel):
+    title: str
+    message: str
+    site_id: Optional[str] = None  # If None, broadcast to all residents
+
+
+
+@router.post("/notifications/broadcast", response_model=APIResponse)
+async def admin_broadcast_notification(
+    request: BroadcastRequest,
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Broadcast a push notification to all residents at a site (or all sites).
+    Example: 'Dinner delayed by 30 minutes at North Wing'.
+    """
+    from app.utils.fcm_manager import send_notification
+
+    db = get_db()
+
+    # Get target residents
+    query = db.collection("residents").where("status", "==", "ACTIVE")
+    if request.site_id:
+        query = query.where("site_id", "==", request.site_id)
+
+    residents = query.get()
+    sent_count = 0
+    failed_count = 0
+
+    for doc in residents:
+        try:
+            send_notification(
+                doc.id,
+                "ADMIN_BROADCAST",
+                {"title": request.title, "message": request.message},
+            )
+            sent_count += 1
+        except Exception:
+            failed_count += 1
+
+    return APIResponse(
+        status="success",
+        message=f"Notification sent to {sent_count} residents. {failed_count} failed.",
+        data={"sent": sent_count, "failed": failed_count, "total": len(residents)},
+    )

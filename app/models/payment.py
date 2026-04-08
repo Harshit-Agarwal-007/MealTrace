@@ -17,6 +17,28 @@ class PlanInfo(BaseModel):
     duration_days: int = 30  # Plan validity in days
     price: int  # in INR (₹)
     description: Optional[str] = None
+    is_active: bool = True
+
+
+class CreatePlanRequest(BaseModel):
+    """Admin creates a new meal plan."""
+    name: str
+    meals_per_day: int  # 1, 2, or 3
+    meal_count: int
+    duration_days: int = 30
+    price: int  # in INR
+    description: Optional[str] = None
+
+
+class UpdatePlanRequest(BaseModel):
+    """Admin updates a meal plan (partial)."""
+    name: Optional[str] = None
+    meals_per_day: Optional[int] = None
+    meal_count: Optional[int] = None
+    duration_days: Optional[int] = None
+    price: Optional[int] = None
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class ActivePlanResponse(BaseModel):

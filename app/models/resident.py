@@ -100,10 +100,28 @@ class UpdateResidentRequest(BaseModel):
     status: Optional[str] = None
 
 
+class UpdateSelfProfileRequest(BaseModel):
+    """Resident self-edit (limited fields — no role/status changes)."""
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    room_number: Optional[str] = None
+
+
 class SubscribeRequest(BaseModel):
     """Subscribe to a meal plan with selected meals."""
     plan_id: str
     selected_meals: List[str]  # e.g. ["BREAKFAST", "DINNER"]
+
+
+class GuestPassInfo(BaseModel):
+    """Guest pass entry for resident's pass list."""
+    id: str
+    site_id: str
+    meal_type: Optional[str] = None
+    status: str  # UNUSED, USED
+    expiry_at: datetime
+    created_at: datetime
+    used_at: Optional[datetime] = None
 
 
 class ResidentListResponse(BaseModel):

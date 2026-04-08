@@ -221,6 +221,62 @@ def subscribe_to_plan(
     return get_subscription(resident_id)
 
 
+def update_self_profile(resident_id: str, updates: dict) -> Optional[ResidentProfile]:
+    """
+    Resident self-edit — only allows safe fields (name, phone, room_number).
+    Cannot change email, status, site, or plan.
+    """
+    db = get_db()
+    doc_ref = db.collection("residents").document(resident_id)
+    doc = doc_ref.get()
+
+    if not doc.exists:
+        return None
+
+    # Only allow safe fields
+    safe_fields = {"name", "phone", "room_number"}
+    clean_updates = {k: v for k, v in updates.items() if v is not None and k in safe_fields}
+
+    if clean_updates:
+        doc_ref.update(clean_updates)
+
+    return get_profile(resident_id)
+
+
+def get_guest_passes(resident_id: str) -> list:
+    """Get all guest passes for a resident (active + used)."""
+    db = get_db()
+    from app.models.resident import GuestPassInfo
+
+    docs = (
+        db.collection("guest_passes")
+        .where("resident_id", "==", resident_id)
+        .get()
+    )
+
+    # Sort client-side by created_at (newest first)
+    sorted_docs = sorted(
+        docs,
+        key=lambda d: d.to_dict().get("created_at", datetime.min.replace(tzinfo=timezone.utc)),
+        reverse=True,
+    )
+
+    passes = []
+    for doc in sorted_docs:
+        data = doc.to_dict()
+        passes.append(GuestPassInfo(
+            id=doc.id,
+            site_id=data.get("site_id", ""),
+            meal_type=data.get("meal_type"),
+            status=data.get("status", "UNUSED"),
+            expiry_at=data.get("expiry_at", datetime.now(timezone.utc)),
+            created_at=data.get("created_at", datetime.now(timezone.utc)),
+            used_at=data.get("used_at"),
+        ))
+
+    return passes
+
+
 def get_transactions(
     resident_id: str,
     page: int = 1,

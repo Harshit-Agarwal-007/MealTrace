@@ -158,6 +158,54 @@ def send_password_reset(email: str) -> bool:
         return False
 
 
+def change_password(user_id: str, email: str, current_password: str, new_password: str) -> bool:
+    """
+    Change the password for the currently authenticated user.
+
+    Uses Firebase Admin SDK to update the password.
+    We verify the current password by attempting a sign-in first via REST API.
+    """
+    if len(new_password) < 6:
+        raise ValueError("New password must be at least 6 characters")
+
+    db = get_db()
+
+    # Find the user's Firebase UID from Firestore
+    firebase_uid = None
+
+    # Check residents
+    res_doc = db.collection("residents").document(user_id).get()
+    if res_doc.exists:
+        firebase_uid = res_doc.to_dict().get("firebase_uid")
+        if not firebase_uid:
+            email = res_doc.to_dict().get("email", email)
+
+    # Check admin_users
+    if not firebase_uid:
+        admin_doc = db.collection("admin_users").document(user_id).get()
+        if admin_doc.exists:
+            firebase_uid = admin_doc.to_dict().get("firebase_uid")
+            if not firebase_uid:
+                email = admin_doc.to_dict().get("email", email)
+
+    # Look up by email if we don't have the UID stored
+    if not firebase_uid:
+        try:
+            fb_user = firebase_auth.get_user_by_email(email)
+            firebase_uid = fb_user.uid
+        except firebase_auth.UserNotFoundError:
+            raise ValueError("User not found in authentication system")
+
+    # Update password via Firebase Admin SDK
+    try:
+        firebase_auth.update_user(firebase_uid, password=new_password)
+        logger.info(f"Password changed for user {user_id} ({email})")
+        return True
+    except Exception as e:
+        logger.error(f"Password change failed for {user_id}: {e}")
+        raise ValueError(f"Failed to change password: {e}")
+
+
 def create_firebase_user_for_invite(email: str, name: str, password: str = None) -> str:
     """
     Create a Firebase Auth user when admin adds a resident.

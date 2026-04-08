@@ -68,3 +68,18 @@ async def update_existing_site(
     if result is None:
         raise HTTPException(status_code=404, detail=f"Site {site_id} not found")
     return result
+
+
+@router.delete("/{site_id}")
+async def delete_existing_site(
+    site_id: str,
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Deactivate a site — sets is_active to False.
+    Does NOT delete the document (for audit trail and existing references).
+    """
+    result = update_site(site_id, {"is_active": False})
+    if result is None:
+        raise HTTPException(status_code=404, detail=f"Site {site_id} not found")
+    return {"status": "success", "message": f"Site {site_id} deactivated."}
