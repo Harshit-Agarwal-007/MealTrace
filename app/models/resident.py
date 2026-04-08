@@ -25,6 +25,7 @@ class ResidentProfile(BaseModel):
     allowed_meals: List[str] = []  # e.g. ["BREAKFAST", "DINNER"]
     plan_started_at: Optional[datetime] = None
     plan_expiry: Optional[datetime] = None
+    dietary_preference: str = "VEG"
     created_at: Optional[datetime] = None
 
 
@@ -87,6 +88,7 @@ class CreateResidentRequest(BaseModel):
     phone: Optional[str] = None
     room_number: str
     site_id: str
+    dietary_preference: str = "VEG"
     password: Optional[str] = None  # If None, admin invite flow sends setup email
 
 
@@ -98,6 +100,7 @@ class UpdateResidentRequest(BaseModel):
     room_number: Optional[str] = None
     site_id: Optional[str] = None
     status: Optional[str] = None
+    dietary_preference: Optional[str] = None
 
 
 class UpdateSelfProfileRequest(BaseModel):
@@ -105,6 +108,7 @@ class UpdateSelfProfileRequest(BaseModel):
     name: Optional[str] = None
     phone: Optional[str] = None
     room_number: Optional[str] = None
+    dietary_preference: Optional[str] = None
 
 
 class SubscribeRequest(BaseModel):

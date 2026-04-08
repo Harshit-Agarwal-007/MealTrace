@@ -7,9 +7,9 @@ POST /scan/validate — Core scan engine with all 6 hard-block checks.
 
 from fastapi import APIRouter, Depends
 
-from app.models.scan import ScanValidateRequest, ScanValidateResponse
+from app.models.scan import ScanValidateRequest, ScanValidateResponse, ManualScanRequest
 from app.middleware.auth import require_vendor_or_admin
-from app.services.scan_service import validate_scan
+from app.services.scan_service import validate_scan, manual_scan
 
 router = APIRouter(prefix="/scan", tags=["Scanner"])
 
@@ -49,4 +49,22 @@ async def scan_validate(
         qr_payload=request.qr_payload,
         site_id=request.site_id,
         vendor_id=request.vendor_id,
+    )
+
+
+@router.post("/manual", response_model=ScanValidateResponse)
+async def scan_manual(
+    request: ManualScanRequest,
+    current_user: dict = Depends(require_vendor_or_admin),
+):
+    """
+    Manually log a scan without a physical QR code.
+    Used by vendors when resident forgets their phone.
+    Requires resident_id, site_id, and an optional description.
+    """
+    return manual_scan(
+        resident_id=request.resident_id,
+        site_id=request.site_id,
+        vendor_id=request.vendor_id,
+        description=request.description,
     )

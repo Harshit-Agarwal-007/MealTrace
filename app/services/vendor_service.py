@@ -269,3 +269,36 @@ def get_vendor_assigned_sites(vendor_id: str) -> list:
             })
 
     return sites
+
+
+def vendor_search_residents(vendor_id: str, query: str) -> list:
+    """
+    Search for a resident by name or phone/room_number for manual entry.
+    Returns basic info (id, name, dietary preference) so vendor can log manual scan.
+    """
+    db = get_db()
+    
+    # In a real heavy-load scenario, we'd use Algolia or Typesense.
+    # Since Firestore lacks substring search, we do a client-side filter of ACTIVE users.
+    # For a PG, a few hundred users is fast enough to filter client-side.
+    docs = db.collection("residents").where("status", "==", "ACTIVE").get()
+    
+    q_lower = query.lower()
+    results = []
+    
+    for doc in docs:
+        data = doc.to_dict()
+        n = data.get("name", "").lower()
+        r = data.get("room_number", "").lower()
+        p = data.get("phone", "")
+        
+        if q_lower in n or q_lower in r or q_lower in p:
+            results.append({
+                "id": doc.id,
+                "name": data.get("name"),
+                "room_number": data.get("room_number"),
+                "dietary_preference": data.get("dietary_preference", "VEG"),
+            })
+            
+    # Return at most 10 results
+    return results[:10]

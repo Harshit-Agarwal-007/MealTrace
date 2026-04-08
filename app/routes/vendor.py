@@ -13,6 +13,7 @@ from app.middleware.auth import require_vendor
 from app.services.vendor_service import (
     get_vendor_self_profile,
     get_vendor_assigned_sites,
+    vendor_search_residents,
 )
 
 router = APIRouter(prefix="/vendor", tags=["Vendor"])
@@ -40,3 +41,21 @@ async def vendor_assigned_sites(current_user: dict = Depends(require_vendor)):
     user_id = current_user["sub"]
     sites = get_vendor_assigned_sites(user_id)
     return {"sites": sites, "count": len(sites)}
+
+
+@router.get("/search-user")
+async def vendor_search_user(
+    query: str,
+    current_user: dict = Depends(require_vendor),
+):
+    """
+    Search for a resident by name, phone, or room number.
+    Returns basic info (Name, Room, Dietary Pref) to allow the vendor
+    to grab the resident's ID and perform a manual log if they forgot their phone.
+    """
+    if len(query) < 3:
+        raise HTTPException(status_code=400, detail="Search query must be at least 3 characters")
+        
+    user_id = current_user["sub"]
+    results = vendor_search_residents(user_id, query)
+    return {"results": results, "count": len(results)}

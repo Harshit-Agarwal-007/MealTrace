@@ -50,6 +50,7 @@ def _build_resident_profile(doc_id: str, data: dict, db=None) -> ResidentProfile
         allowed_meals=data.get("allowed_meals", []),
         plan_started_at=data.get("plan_started_at"),
         plan_expiry=data.get("plan_expiry"),
+        dietary_preference=data.get("dietary_preference", "VEG"),
         created_at=data.get("created_at"),
     )
 
@@ -234,7 +235,7 @@ def update_self_profile(resident_id: str, updates: dict) -> Optional[ResidentPro
         return None
 
     # Only allow safe fields
-    safe_fields = {"name", "phone", "room_number"}
+    safe_fields = {"name", "phone", "room_number", "dietary_preference"}
     clean_updates = {k: v for k, v in updates.items() if v is not None and k in safe_fields}
 
     if clean_updates:
@@ -427,6 +428,7 @@ def create_resident(
         "firebase_uid": firebase_uid,
         "allowed_meals": [],
         "plan_id": None,
+        "dietary_preference": "VEG",
         "created_at": now,
     }
     doc_ref.set(doc_data)
@@ -509,6 +511,7 @@ def bulk_import_residents(residents_data: list) -> dict:
                 "firebase_uid": firebase_uid,
                 "allowed_meals": [],
                 "plan_id": None,
+                "dietary_preference": row.get("dietary_preference", "VEG"),
                 "created_at": now,
             })
             created += 1

@@ -27,6 +27,7 @@ class RegisterRequest(BaseModel):
     phone: Optional[str] = None
     room_number: str
     site_id: str
+    dietary_preference: str = "VEG"  # VEG or NON-VEG
 
 
 class ForgotPasswordRequest(BaseModel):

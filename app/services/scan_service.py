@@ -18,6 +18,7 @@ Guest passes bypass blocks 5, 6, and 7.
 
 import logging
 from datetime import datetime, timezone, timedelta, date
+from typing import Optional
 
 from google.cloud.firestore_v1 import transaction as firestore_transaction
 from google.cloud.firestore_v1.base_query import FieldFilter
@@ -155,6 +156,7 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
             status=ScanStatus.BLOCKED,
             resident_name=resident_name,
             resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
             block_reason=BlockReason.INACTIVE_RESIDENT.value,
             timestamp=now,
         )
@@ -166,6 +168,7 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
             status=ScanStatus.BLOCKED,
             resident_name=resident_name,
             resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
             block_reason=BlockReason.WRONG_SITE.value,
             timestamp=now,
         )
@@ -178,6 +181,7 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
             status=ScanStatus.BLOCKED,
             resident_name=resident_name,
             resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
             block_reason=BlockReason.WRONG_SITE.value,
             timestamp=now,
         )
@@ -192,6 +196,7 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
             status=ScanStatus.BLOCKED,
             resident_name=resident_name,
             resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
             meal_type=meal_type,
             block_reason=BlockReason.OUTSIDE_MEAL_WINDOW.value,
             timestamp=now,
@@ -211,6 +216,7 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
             status=ScanStatus.BLOCKED,
             resident_name=resident_name,
             resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
             meal_type=meal_type,
             block_reason=BlockReason.NOT_IN_PLAN.value,
             timestamp=now,
@@ -223,8 +229,23 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
             status=ScanStatus.BLOCKED,
             resident_name=resident_name,
             resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
             meal_type=meal_type,
             block_reason=BlockReason.DUPLICATE_SCAN.value,
+            timestamp=now,
+        )
+
+    # ── Block 7: EXPIRED_PLAN ──
+    plan_expiry = resident.get("plan_expiry")
+    if plan_expiry and plan_expiry < now:
+        _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.EXPIRED_PLAN, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_name=resident_name,
+            resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
+            meal_type=meal_type,
+            block_reason=BlockReason.EXPIRED_PLAN.value,
             timestamp=now,
         )
 
@@ -236,6 +257,7 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
             status=ScanStatus.BLOCKED,
             resident_name=resident_name,
             resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
             meal_type=meal_type,
             balance_after=0,
             block_reason=BlockReason.ZERO_BALANCE.value,
@@ -262,6 +284,7 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
         status=ScanStatus.SUCCESS,
         resident_name=resident_name,
         resident_id=resident_id,
+        dietary_preference=resident.get("dietary_preference", "VEG"),
         meal_type=meal_type,
         balance_after=new_balance,
         is_guest_pass=False,
@@ -310,15 +333,168 @@ def _consume_guest_pass(
         status=ScanStatus.SUCCESS,
         resident_name=resident_name,
         resident_id=resident_id,
+        dietary_preference=resident_doc.to_dict().get("dietary_preference", "VEG") if resident_doc.exists else "VEG",
         meal_type=meal_type,
         balance_after=balance,
         is_guest_pass=True,
         timestamp=now,
     )
 
+def manual_scan(resident_id: str, site_id: str, vendor_id: str, description: Optional[str] = None) -> ScanValidateResponse:
+    """
+    Manually log a meal for a resident without a physical QR code.
+    Useful when the resident forgets their phone or QR mechanism fails.
+    """
+    now = datetime.now(timezone.utc)
+    db = get_db()
+    
+    # ── Fetch resident doc ──
+    resident_ref = db.collection("residents").document(resident_id)
+    resident_doc = resident_ref.get()
+
+    if not resident_doc.exists:
+        _log_scan(db, resident_id, site_id, vendor_id, None, ScanStatus.BLOCKED, BlockReason.INVALID_QR, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_id=resident_id,
+            block_reason=BlockReason.INVALID_QR.value,
+            timestamp=now,
+        )
+
+    resident = resident_doc.to_dict()
+    resident_name = resident.get("name", "Unknown")
+
+    # ── Block: INACTIVE_RESIDENT ──
+    if resident.get("status") != "ACTIVE":
+        _log_scan(db, resident_id, site_id, vendor_id, None, ScanStatus.BLOCKED, BlockReason.INACTIVE_RESIDENT, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_name=resident_name,
+            resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
+            block_reason=BlockReason.INACTIVE_RESIDENT.value,
+            timestamp=now,
+        )
+
+    # ── Fetch site data for meal window check ──
+    site_doc = db.collection("sites").document(site_id).get()
+    if not site_doc.exists:
+        _log_scan(db, resident_id, site_id, vendor_id, None, ScanStatus.BLOCKED, BlockReason.WRONG_SITE, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_name=resident_name,
+            resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
+            block_reason=BlockReason.WRONG_SITE.value,
+            timestamp=now,
+        )
+
+    site_data = site_doc.to_dict()
+
+    # ── Block: OUTSIDE_MEAL_WINDOW ──
+    meal_type, within_window = _get_current_meal_type(site_data)
+    if not within_window or meal_type is None:
+        _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.OUTSIDE_MEAL_WINDOW, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_name=resident_name,
+            resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
+            meal_type=meal_type,
+            block_reason=BlockReason.OUTSIDE_MEAL_WINDOW.value,
+            timestamp=now,
+        )
+
+    # ── Check for active guest pass (bypasses plan checks) ──
+    guest_pass = _check_active_guest_pass(db, resident_id, site_id, meal_type)
+    if guest_pass:
+        return _consume_guest_pass(db, guest_pass, resident_id, site_id, vendor_id, meal_type, resident_name, now)
+
+    # ── Block: NOT_IN_PLAN ──
+    allowed_meals = resident.get("allowed_meals", [])
+    if allowed_meals and meal_type not in allowed_meals:
+        _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.NOT_IN_PLAN, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_name=resident_name,
+            resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
+            meal_type=meal_type,
+            block_reason=BlockReason.NOT_IN_PLAN.value,
+            timestamp=now,
+        )
+
+    # ── Block: DUPLICATE_SCAN ──
+    if _check_duplicate_scan(db, resident_id, site_id, meal_type):
+        _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.DUPLICATE_SCAN, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_name=resident_name,
+            resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
+            meal_type=meal_type,
+            block_reason=BlockReason.DUPLICATE_SCAN.value,
+            timestamp=now,
+        )
+
+    # ── Block: EXPIRED_PLAN ──
+    plan_expiry = resident.get("plan_expiry")
+    if plan_expiry and plan_expiry < now:
+        _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.EXPIRED_PLAN, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_name=resident_name,
+            resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
+            meal_type=meal_type,
+            block_reason=BlockReason.EXPIRED_PLAN.value,
+            timestamp=now,
+        )
+
+    # ── Block: ZERO_BALANCE ──
+    current_balance = resident.get("balance", 0)
+    if current_balance <= 0:
+        _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.ZERO_BALANCE, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_name=resident_name,
+            resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
+            meal_type=meal_type,
+            balance_after=0,
+            block_reason=BlockReason.ZERO_BALANCE.value,
+            timestamp=now,
+        )
+
+    # ── ALL CHECKS PASSED — Atomic credit deduction ──
+    new_balance = _atomic_deduct_and_log(
+        db, resident_ref, resident_id, site_id, vendor_id, meal_type, current_balance, now, is_manual=True, description=description
+    )
+
+    try:
+        send_notification(
+            resident_id,
+            "SCAN_SUCCESS",
+            {"meal_type": meal_type, "balance": str(new_balance)},
+        )
+        send_low_balance_alert(resident_id, new_balance)
+    except Exception as e:
+        logger.warning(f"FCM notification failed (non-critical): {e}")
+
+    return ScanValidateResponse(
+        status=ScanStatus.SUCCESS,
+        resident_name=resident_name,
+        resident_id=resident_id,
+        dietary_preference=resident.get("dietary_preference", "VEG"),
+        meal_type=meal_type,
+        balance_after=new_balance,
+        is_guest_pass=False,
+        timestamp=now,
+    )
+
 
 def _atomic_deduct_and_log(
-    db, resident_ref, resident_id, site_id, vendor_id, meal_type, current_balance, timestamp
+    db, resident_ref, resident_id, site_id, vendor_id, meal_type, current_balance, timestamp, is_manual=False, description=None
 ) -> int:
     """
     Use a Firestore Transaction to atomically:
@@ -341,7 +517,7 @@ def _atomic_deduct_and_log(
 
         # Write scan log inside the same transaction
         log_ref = db.collection("scan_logs").document()
-        transaction.set(log_ref, {
+        log_data = {
             "resident_id": resident_id,
             "site_id": site_id,
             "vendor_id": vendor_id,
@@ -349,8 +525,13 @@ def _atomic_deduct_and_log(
             "status": ScanStatus.SUCCESS.value,
             "block_reason": None,
             "is_guest_pass": False,
+            "is_manual": is_manual,
             "timestamp": timestamp,
-        })
+        }
+        if description:
+            log_data["description"] = description
+        
+        transaction.set(log_ref, log_data)
 
         return new_balance
 

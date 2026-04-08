@@ -22,6 +22,7 @@ class BlockReason(str, Enum):
     INACTIVE_RESIDENT = "INACTIVE_RESIDENT"     # Resident status ≠ ACTIVE
     INVALID_QR = "INVALID_QR"                   # QR signature verification failed
     NOT_IN_PLAN = "NOT_IN_PLAN"                 # Meal type not in resident's allowed_meals
+    EXPIRED_PLAN = "EXPIRED_PLAN"               # Resident's plan has expired
 
 
 # ── Request ──
@@ -33,6 +34,14 @@ class ScanValidateRequest(BaseModel):
     vendor_id: str      # The vendor performing the scan
 
 
+class ManualScanRequest(BaseModel):
+    """Vendor manually logs a meal without a QR code."""
+    resident_id: str
+    site_id: str
+    vendor_id: str
+    description: Optional[str] = None  # Reason for manual scan (e.g., "Forgot phone")
+
+
 # ── Response ──
 
 class ScanValidateResponse(BaseModel):
@@ -40,6 +49,7 @@ class ScanValidateResponse(BaseModel):
     status: ScanStatus
     resident_name: Optional[str] = None
     resident_id: Optional[str] = None
+    dietary_preference: Optional[str] = None
     meal_type: Optional[str] = None
     balance_after: Optional[int] = None
     block_reason: Optional[str] = None
