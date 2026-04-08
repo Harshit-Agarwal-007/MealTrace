@@ -1,47 +1,42 @@
 # app/services/resident_service.py
 """
-Resident service — profile management, QR generation, transaction history.
+Resident service — profile management, QR generation, transaction history,
+subscription management, and admin operations.
 """
 
 import logging
 import io
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
 from app.database import get_db
 from app.models.resident import (
     ResidentProfile,
     ResidentBalance,
+    SubscriptionInfo,
     TransactionRecord,
     TransactionListResponse,
     QRCodeResponse,
     ResidentListResponse,
 )
 from app.utils.qr_gen import generate_qr_payload, generate_qr_image_base64
+from app.services.auth_service import create_firebase_user_for_invite
 
 logger = logging.getLogger(__name__)
 
 
-def get_profile(resident_id: str) -> Optional[ResidentProfile]:
-    """Get a resident's full profile."""
-    db = get_db()
-    doc = db.collection("residents").document(resident_id).get()
-    if not doc.exists:
-        return None
-
-    data = doc.to_dict()
-
-    # Optionally fetch site name
+def _build_resident_profile(doc_id: str, data: dict, db=None) -> ResidentProfile:
+    """Build a ResidentProfile from Firestore document data."""
     site_name = None
     site_id = data.get("site_id")
-    if site_id:
+    if site_id and db:
         site_doc = db.collection("sites").document(site_id).get()
         if site_doc.exists:
             site_name = site_doc.to_dict().get("name")
 
     return ResidentProfile(
-        id=doc.id,
+        id=doc_id,
         name=data.get("name", ""),
         email=data.get("email", ""),
         phone=data.get("phone"),
@@ -50,8 +45,22 @@ def get_profile(resident_id: str) -> Optional[ResidentProfile]:
         site_name=site_name,
         balance=data.get("balance", 0),
         status=data.get("status", "ACTIVE"),
+        plan_id=data.get("plan_id"),
+        plan_name=data.get("plan_name"),
+        allowed_meals=data.get("allowed_meals", []),
+        plan_started_at=data.get("plan_started_at"),
+        plan_expiry=data.get("plan_expiry"),
         created_at=data.get("created_at"),
     )
+
+
+def get_profile(resident_id: str) -> Optional[ResidentProfile]:
+    """Get a resident's full profile."""
+    db = get_db()
+    doc = db.collection("residents").document(resident_id).get()
+    if not doc.exists:
+        return None
+    return _build_resident_profile(doc.id, doc.to_dict(), db)
 
 
 def get_balance(resident_id: str) -> Optional[ResidentBalance]:
@@ -65,7 +74,7 @@ def get_balance(resident_id: str) -> Optional[ResidentBalance]:
     return ResidentBalance(
         resident_id=resident_id,
         balance=data.get("balance", 0),
-        active_plan=data.get("active_plan"),
+        active_plan=data.get("plan_id"),
         plan_expiry=data.get("plan_expiry"),
     )
 
@@ -99,6 +108,117 @@ def get_qr_code(resident_id: str) -> Optional[QRCodeResponse]:
         payload_signature=payload[:32] + "...",  # Truncated for display
         generated_at=datetime.now(timezone.utc),
     )
+
+
+def get_subscription(resident_id: str) -> Optional[SubscriptionInfo]:
+    """Get a resident's current subscription details."""
+    db = get_db()
+    doc = db.collection("residents").document(resident_id).get()
+    if not doc.exists:
+        return None
+
+    data = doc.to_dict()
+    plan_id = data.get("plan_id")
+    plan_expiry = data.get("plan_expiry")
+
+    # Determine status
+    if not plan_id:
+        status = "NONE"
+    elif plan_expiry and plan_expiry < datetime.now(timezone.utc):
+        status = "EXPIRED"
+    else:
+        status = "ACTIVE"
+
+    # Fetch plan details
+    plan_name = data.get("plan_name")
+    meals_per_day = None
+    if plan_id:
+        plan_doc = db.collection("plans").document(plan_id).get()
+        if plan_doc.exists:
+            plan_data = plan_doc.to_dict()
+            plan_name = plan_data.get("name", plan_name)
+            meals_per_day = plan_data.get("meals_per_day")
+
+    return SubscriptionInfo(
+        resident_id=resident_id,
+        plan_id=plan_id,
+        plan_name=plan_name,
+        meals_per_day=meals_per_day,
+        allowed_meals=data.get("allowed_meals", []),
+        balance=data.get("balance", 0),
+        plan_started_at=data.get("plan_started_at"),
+        plan_expiry=plan_expiry,
+        status=status,
+    )
+
+
+def subscribe_to_plan(
+    resident_id: str,
+    plan_id: str,
+    selected_meals: List[str],
+) -> SubscriptionInfo:
+    """
+    Subscribe a resident to a meal plan with selected meal types.
+
+    Validates:
+    - Plan exists
+    - Number of selected meals matches plan's meals_per_day
+    - Selected meals are valid (BREAKFAST, LUNCH, DINNER)
+
+    Updates the resident's profile with plan info and credits.
+    """
+    db = get_db()
+    now = datetime.now(timezone.utc)
+
+    # Validate plan
+    plan_doc = db.collection("plans").document(plan_id).get()
+    if not plan_doc.exists:
+        raise ValueError(f"Plan {plan_id} not found")
+
+    plan = plan_doc.to_dict()
+    meals_per_day = plan.get("meals_per_day", 1)
+    duration_days = plan.get("duration_days", 30)
+
+    # Validate selected meals
+    valid_meals = {"BREAKFAST", "LUNCH", "DINNER"}
+    selected_upper = [m.upper() for m in selected_meals]
+    invalid = set(selected_upper) - valid_meals
+    if invalid:
+        raise ValueError(f"Invalid meal types: {invalid}. Must be BREAKFAST, LUNCH, or DINNER")
+
+    if len(selected_upper) != meals_per_day:
+        raise ValueError(
+            f"Plan '{plan.get('name')}' requires exactly {meals_per_day} meal(s) selected, "
+            f"but {len(selected_upper)} were provided"
+        )
+
+    # Check if resident exists
+    resident_ref = db.collection("residents").document(resident_id)
+    resident_doc = resident_ref.get()
+    if not resident_doc.exists:
+        raise ValueError(f"Resident {resident_id} not found")
+
+    # Calculate credits and expiry
+    credits = plan.get("meal_count", meals_per_day * duration_days)
+    expiry = now + timedelta(days=duration_days)
+    current_balance = resident_doc.to_dict().get("balance", 0)
+
+    # Update resident with subscription
+    resident_ref.update({
+        "plan_id": plan_id,
+        "plan_name": plan.get("name"),
+        "allowed_meals": selected_upper,
+        "plan_started_at": now,
+        "plan_expiry": expiry,
+        "balance": current_balance + credits,
+    })
+
+    logger.info(
+        f"Resident {resident_id} subscribed to plan {plan_id}: "
+        f"{selected_upper}, +{credits} credits"
+    )
+
+    return get_subscription(resident_id)
 
 
 def get_transactions(
@@ -149,6 +269,7 @@ def get_transactions(
             site_name=site_name,
             status=data.get("status", ""),
             block_reason=data.get("block_reason"),
+            is_guest_pass=data.get("is_guest_pass", False),
             timestamp=data.get("timestamp", datetime.now(timezone.utc)),
         ))
 
@@ -196,20 +317,7 @@ def list_residents(
     offset = (page - 1) * page_size
     page_docs = all_docs[offset: offset + page_size]
 
-    residents = []
-    for doc in page_docs:
-        data = doc.to_dict()
-        residents.append(ResidentProfile(
-            id=doc.id,
-            name=data.get("name", ""),
-            email=data.get("email", ""),
-            phone=data.get("phone"),
-            room_number=data.get("room_number", ""),
-            site_id=data.get("site_id", ""),
-            balance=data.get("balance", 0),
-            status=data.get("status", "ACTIVE"),
-            created_at=data.get("created_at"),
-        ))
+    residents = [_build_resident_profile(doc.id, doc.to_dict(), db) for doc in page_docs]
 
     return ResidentListResponse(
         residents=residents,
@@ -220,16 +328,34 @@ def list_residents(
     )
 
 
+def get_residents_by_site(site_id: str) -> List[ResidentProfile]:
+    """Get all residents assigned to a specific site."""
+    db = get_db()
+    docs = db.collection("residents").where("site_id", "==", site_id).get()
+    return [_build_resident_profile(doc.id, doc.to_dict(), db) for doc in docs]
+
+
 def create_resident(
     name: str,
     email: str,
     phone: Optional[str],
     room_number: str,
     site_id: str,
+    password: Optional[str] = None,
 ) -> ResidentProfile:
-    """Add a new resident."""
+    """
+    Add a new resident (admin action).
+    Creates Firebase Auth account so user can login.
+    """
     db = get_db()
     now = datetime.now(timezone.utc)
+
+    # Create Firebase user
+    try:
+        firebase_uid = create_firebase_user_for_invite(email, name, password)
+    except ValueError as e:
+        logger.warning(f"Could not create Firebase user for {email}: {e}")
+        firebase_uid = None
 
     doc_id = f"res_{uuid.uuid4().hex[:12]}"
     doc_ref = db.collection("residents").document(doc_id)
@@ -242,11 +368,14 @@ def create_resident(
         "site_id": site_id,
         "balance": 0,
         "status": "ACTIVE",
+        "firebase_uid": firebase_uid,
+        "allowed_meals": [],
+        "plan_id": None,
         "created_at": now,
     }
     doc_ref.set(doc_data)
 
-    return ResidentProfile(id=doc_id, **doc_data)
+    return _build_resident_profile(doc_id, doc_data, db)
 
 
 def update_resident(resident_id: str, updates: dict) -> Optional[ResidentProfile]:
@@ -302,6 +431,17 @@ def bulk_import_residents(residents_data: list) -> dict:
         try:
             doc_id = f"res_{uuid.uuid4().hex[:12]}"
             doc_ref = db.collection("residents").document(doc_id)
+
+            # Try to create Firebase user for each
+            firebase_uid = None
+            try:
+                firebase_uid = create_firebase_user_for_invite(
+                    row.get("email", ""),
+                    row.get("name", ""),
+                )
+            except Exception:
+                pass
+
             batch.set(doc_ref, {
                 "name": row.get("name", ""),
                 "email": row.get("email", ""),
@@ -310,6 +450,9 @@ def bulk_import_residents(residents_data: list) -> dict:
                 "site_id": row.get("site_id", ""),
                 "balance": 0,
                 "status": "ACTIVE",
+                "firebase_uid": firebase_uid,
+                "allowed_meals": [],
+                "plan_id": None,
                 "created_at": now,
             })
             created += 1

@@ -13,7 +13,7 @@ class ScanStatus(str, Enum):
 
 
 class BlockReason(str, Enum):
-    """The 6 hard-block conditions."""
+    """The 7 hard-block conditions."""
     NONE = ""
     DUPLICATE_SCAN = "DUPLICATE_SCAN"           # Already scanned for this meal today
     ZERO_BALANCE = "ZERO_BALANCE"               # No credits remaining
@@ -21,6 +21,7 @@ class BlockReason(str, Enum):
     OUTSIDE_MEAL_WINDOW = "OUTSIDE_MEAL_WINDOW" # Current time outside meal window
     INACTIVE_RESIDENT = "INACTIVE_RESIDENT"     # Resident status ≠ ACTIVE
     INVALID_QR = "INVALID_QR"                   # QR signature verification failed
+    NOT_IN_PLAN = "NOT_IN_PLAN"                 # Meal type not in resident's allowed_meals
 
 
 # ── Request ──
@@ -42,4 +43,5 @@ class ScanValidateResponse(BaseModel):
     meal_type: Optional[str] = None
     balance_after: Optional[int] = None
     block_reason: Optional[str] = None
+    is_guest_pass: bool = False
     timestamp: datetime

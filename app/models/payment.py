@@ -12,8 +12,11 @@ class PlanInfo(BaseModel):
     """Meal plan definition."""
     id: str
     name: str
-    meal_count: int
-    price: int  # in paise (₹1500 = 150000 paise) — or INR if you prefer
+    meals_per_day: int  # 1, 2, or 3
+    meal_count: int  # Total credits in the plan (e.g. 30)
+    duration_days: int = 30  # Plan validity in days
+    price: int  # in INR (₹)
+    description: Optional[str] = None
 
 
 class ActivePlanResponse(BaseModel):
@@ -30,6 +33,7 @@ class ActivePlanResponse(BaseModel):
 class CreateOrderRequest(BaseModel):
     """Create Razorpay order for plan or guest pass purchase."""
     plan_id: Optional[str] = None
+    selected_meals: Optional[List[str]] = None  # e.g. ["BREAKFAST", "DINNER"]
     guest_pass: bool = False
     amount: Optional[int] = None  # Override amount (for guest pass)
 
@@ -84,7 +88,7 @@ class CreditOverrideResponse(BaseModel):
 # ── Guest Pass ──
 
 class GuestPassPurchaseRequest(BaseModel):
-    """Purchase a single-use guest QR pass."""
+    """Purchase a single-use guest QR pass (₹100 for one out-of-plan meal)."""
     site_id: str
     meal_type: Optional[str] = None  # If specific meal, else any
 

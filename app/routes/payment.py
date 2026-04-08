@@ -4,8 +4,8 @@ Payment endpoints.
 
 POST /payments/create-order   — Create Razorpay order for plan/guest pass
 POST /payments/webhook        — Razorpay webhook (signature validated)
-GET  /plans/active            — Get available meal plans
-POST /guest-pass/purchase     — Issue a single-use guest QR pass
+GET  /plans                   — Get available meal plans (with meals_per_day)
+POST /guest-pass/purchase     — Issue a single-use guest QR pass (₹100)
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -81,9 +81,17 @@ async def razorpay_webhook(request: Request):
     return {"status": "ok"}
 
 
-@router.get("/plans/active", response_model=list[PlanInfo])
+@router.get("/plans", response_model=list[PlanInfo])
 async def list_plans():
-    """List all available meal plans (public endpoint for plan selection UI)."""
+    """
+    List all available meal plans.
+
+    Each plan has:
+    - meals_per_day: how many meals included (1, 2, or 3)
+    - meal_count: total credits in the plan
+    - duration_days: validity period
+    - price: price in INR
+    """
     db = get_db()
     docs = db.collection("plans").get()
 
@@ -93,11 +101,21 @@ async def list_plans():
         plans.append(PlanInfo(
             id=doc.id,
             name=data.get("name", ""),
+            meals_per_day=data.get("meals_per_day", 1),
             meal_count=data.get("meal_count", 0),
+            duration_days=data.get("duration_days", 30),
             price=data.get("price", 0),
+            description=data.get("description"),
         ))
 
     return plans
+
+
+# Keep the old /plans/active route for backward compatibility
+@router.get("/plans/active", response_model=list[PlanInfo], include_in_schema=False)
+async def list_plans_active():
+    """Alias for /plans (backward compatibility)."""
+    return await list_plans()
 
 
 @router.post("/guest-pass/purchase", response_model=GuestPassResponse)
@@ -106,7 +124,10 @@ async def buy_guest_pass(
     current_user: dict = Depends(require_resident_or_admin),
 ):
     """
-    Purchase a single-use guest QR pass.
+    Purchase a single-use guest QR pass for ₹100.
+
+    Used when a resident wants a meal outside their plan
+    (e.g., they have breakfast+dinner but need lunch today).
     Valid for 24 hours. Can be used for one meal scan.
     """
     user_id = current_user["sub"]

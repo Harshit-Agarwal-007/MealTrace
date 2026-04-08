@@ -15,10 +15,23 @@ class UserRole(str, Enum):
 # ── Requests ──
 
 class LoginRequest(BaseModel):
-    """Login via email + OTP or email + password."""
-    email: EmailStr
-    otp: Optional[str] = None
+    """Login via Firebase ID token (obtained after email/password or OTP auth)."""
     firebase_id_token: str  # Firebase Auth ID token from client-side auth
+
+
+class RegisterRequest(BaseModel):
+    """Self-registration: creates Firebase Auth user + Firestore resident profile."""
+    email: EmailStr
+    password: str  # Min 6 chars (Firebase requirement)
+    name: str
+    phone: Optional[str] = None
+    room_number: str
+    site_id: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    """Trigger a Firebase password reset email."""
+    email: EmailStr
 
 
 class RefreshTokenRequest(BaseModel):

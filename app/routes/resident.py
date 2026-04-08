@@ -2,10 +2,12 @@
 """
 Resident-facing endpoints.
 
-GET  /resident/profile        — Current resident's profile
-GET  /resident/qr-code        — Generate/retrieve signed QR code
-GET  /resident/balance        — Current credit balance
-GET  /resident/transactions   — Paginated scan history
+GET   /resident/profile        — Current resident's profile
+GET   /resident/qr-code        — Generate/retrieve signed QR code
+GET   /resident/balance        — Current credit balance
+GET   /resident/transactions   — Paginated scan history
+GET   /resident/subscription   — Current plan subscription details
+POST  /resident/subscribe      — Subscribe to a meal plan with selected meals
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -13,6 +15,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.models.resident import (
     ResidentProfile,
     ResidentBalance,
+    SubscriptionInfo,
+    SubscribeRequest,
     QRCodeResponse,
     TransactionListResponse,
 )
@@ -22,6 +26,8 @@ from app.services.resident_service import (
     get_balance,
     get_qr_code,
     get_transactions,
+    get_subscription,
+    subscribe_to_plan,
 )
 
 router = APIRouter(prefix="/resident", tags=["Resident"])
@@ -74,3 +80,38 @@ async def resident_transactions(
     """Get paginated scan/transaction history."""
     user_id = current_user["sub"]
     return get_transactions(user_id, page=page, page_size=page_size)
+
+
+@router.get("/subscription", response_model=SubscriptionInfo)
+async def resident_subscription(current_user: dict = Depends(require_resident)):
+    """
+    Get the resident's current subscription details.
+
+    Returns plan info, allowed meals, remaining credits, and status.
+    The mobile app uses this to show/lock meal options in the UI.
+    """
+    user_id = current_user["sub"]
+    sub = get_subscription(user_id)
+    if sub is None:
+        raise HTTPException(status_code=404, detail="Resident not found")
+    return sub
+
+
+@router.post("/subscribe", response_model=SubscriptionInfo)
+async def resident_subscribe(
+    request: SubscribeRequest,
+    current_user: dict = Depends(require_resident),
+):
+    """
+    Subscribe to a meal plan with selected meal types.
+
+    Example: Plan "1 Meal/Day", selected_meals: ["BREAKFAST"]
+    → Resident can only scan for breakfast. Lunch/dinner require a ₹100 guest pass.
+
+    The number of selected meals must match the plan's meals_per_day.
+    """
+    user_id = current_user["sub"]
+    try:
+        return subscribe_to_plan(user_id, request.plan_id, request.selected_meals)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))

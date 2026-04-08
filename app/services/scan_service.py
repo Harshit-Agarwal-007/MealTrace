@@ -2,16 +2,18 @@
 """
 Core scan validation engine.
 
-Implements all 6 hard-block conditions atomically using Firestore transactions:
+Implements all 7 hard-block conditions atomically using Firestore transactions:
 
 1. INVALID_QR         — QR signature verification failed
 2. INACTIVE_RESIDENT  — Resident status ≠ ACTIVE
 3. WRONG_SITE         — QR site_id ≠ vendor's current site_id
 4. OUTSIDE_MEAL_WINDOW — Current time is outside the configured meal window
-5. DUPLICATE_SCAN     — Resident already scanned for this meal type today
-6. ZERO_BALANCE       — Resident has 0 credits remaining
+5. NOT_IN_PLAN        — Meal type not in resident's allowed_meals (unless guest pass)
+6. DUPLICATE_SCAN     — Resident already scanned for this meal type today
+7. ZERO_BALANCE       — Resident has 0 credits remaining
 
 On success: atomically deducts 1 credit and logs the scan.
+Guest passes bypass blocks 5, 6, and 7.
 """
 
 import logging
@@ -77,10 +79,40 @@ def _check_duplicate_scan(db, resident_id: str, site_id: str, meal_type: str) ->
     return len(existing) > 0
 
 
+def _check_active_guest_pass(db, resident_id: str, site_id: str, meal_type: str) -> dict:
+    """
+    Check if there's an active (UNUSED, not expired) guest pass for this resident.
+    Returns the guest pass doc data + id if found, else None.
+    """
+    now = datetime.now(timezone.utc)
+
+    passes = (
+        db.collection("guest_passes")
+        .where("resident_id", "==", resident_id)
+        .where("status", "==", "UNUSED")
+        .get()
+    )
+
+    for doc in passes:
+        data = doc.to_dict()
+        expiry = data.get("expiry_at")
+
+        # Check not expired
+        if expiry and expiry > now:
+            # Check site match
+            if data.get("site_id") == site_id:
+                # Check meal type match (if specified on the pass)
+                pass_meal = data.get("meal_type")
+                if pass_meal is None or pass_meal == meal_type:
+                    return {"id": doc.id, **data}
+
+    return None
+
+
 def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidateResponse:
     """
-    Core scan validation — runs all 6 hard-block checks and atomically
-    deducts 1 credit on success.
+    Core scan validation — runs all 7 hard-block checks and atomically
+    deducts 1 credit on success (or consumes a guest pass).
 
     This is the most performance-critical endpoint. Target: <2s on 4G.
     """
@@ -128,7 +160,6 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
         )
 
     # ── Block 3: WRONG_SITE ──
-    # The QR code's embedded site_id must match the vendor's active site
     if qr_site_id != site_id:
         _log_scan(db, resident_id, site_id, vendor_id, None, ScanStatus.BLOCKED, BlockReason.WRONG_SITE, now)
         return ScanValidateResponse(
@@ -166,7 +197,26 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
             timestamp=now,
         )
 
-    # ── Block 5: DUPLICATE_SCAN ──
+    # ── Check for active guest pass (bypasses blocks 5, 6, 7) ──
+    guest_pass = _check_active_guest_pass(db, resident_id, site_id, meal_type)
+    if guest_pass:
+        # Guest pass found — consume it and allow scan
+        return _consume_guest_pass(db, guest_pass, resident_id, site_id, vendor_id, meal_type, resident_name, now)
+
+    # ── Block 5: NOT_IN_PLAN ──
+    allowed_meals = resident.get("allowed_meals", [])
+    if allowed_meals and meal_type not in allowed_meals:
+        _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.NOT_IN_PLAN, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_name=resident_name,
+            resident_id=resident_id,
+            meal_type=meal_type,
+            block_reason=BlockReason.NOT_IN_PLAN.value,
+            timestamp=now,
+        )
+
+    # ── Block 6: DUPLICATE_SCAN ──
     if _check_duplicate_scan(db, resident_id, site_id, meal_type):
         _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.DUPLICATE_SCAN, now)
         return ScanValidateResponse(
@@ -178,7 +228,7 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
             timestamp=now,
         )
 
-    # ── Block 6: ZERO_BALANCE ──
+    # ── Block 7: ZERO_BALANCE ──
     current_balance = resident.get("balance", 0)
     if current_balance <= 0:
         _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.ZERO_BALANCE, now)
@@ -214,6 +264,55 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
         resident_id=resident_id,
         meal_type=meal_type,
         balance_after=new_balance,
+        is_guest_pass=False,
+        timestamp=now,
+    )
+
+
+def _consume_guest_pass(
+    db, guest_pass: dict, resident_id: str, site_id: str,
+    vendor_id: str, meal_type: str, resident_name: str, now: datetime
+) -> ScanValidateResponse:
+    """
+    Consume a guest pass — mark it as USED and log the scan.
+    Does NOT deduct from regular balance.
+    """
+    pass_id = guest_pass["id"]
+
+    # Mark pass as USED
+    db.collection("guest_passes").document(pass_id).update({
+        "status": "USED",
+        "used_at": now,
+        "used_meal_type": meal_type,
+        "vendor_id": vendor_id,
+    })
+
+    # Log scan
+    db.collection("scan_logs").add({
+        "resident_id": resident_id,
+        "site_id": site_id,
+        "vendor_id": vendor_id,
+        "meal_type": meal_type,
+        "status": ScanStatus.SUCCESS.value,
+        "block_reason": None,
+        "is_guest_pass": True,
+        "guest_pass_id": pass_id,
+        "timestamp": now,
+    })
+
+    # Get current balance for display
+    resident_doc = db.collection("residents").document(resident_id).get()
+    balance = resident_doc.to_dict().get("balance", 0) if resident_doc.exists else 0
+
+    logger.info(f"Guest pass {pass_id} consumed for {resident_id} — {meal_type}")
+
+    return ScanValidateResponse(
+        status=ScanStatus.SUCCESS,
+        resident_name=resident_name,
+        resident_id=resident_id,
+        meal_type=meal_type,
+        balance_after=balance,
+        is_guest_pass=True,
         timestamp=now,
     )
 
@@ -249,6 +348,7 @@ def _atomic_deduct_and_log(
             "meal_type": meal_type,
             "status": ScanStatus.SUCCESS.value,
             "block_reason": None,
+            "is_guest_pass": False,
             "timestamp": timestamp,
         })
 
@@ -269,6 +369,7 @@ def _log_scan(db, resident_id, site_id, vendor_id, meal_type, status, block_reas
             "meal_type": meal_type,
             "status": status.value,
             "block_reason": block_reason.value if block_reason else None,
+            "is_guest_pass": False,
             "timestamp": timestamp,
         })
     except Exception as e:
