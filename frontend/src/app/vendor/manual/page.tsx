@@ -1,117 +1,137 @@
 "use client";
-import { useState, useEffect } from "react";
-import { Search, CheckCircle2, User, Loader2 } from "lucide-react";
 
-export default function VendorManualEntry() {
+/**
+ * Manual Scan Entry
+ *
+ * GET /vendor/search-user?q=
+ * POST /scan/manual
+ */
+
+import { useState, useCallback, useEffect } from "react";
+import { Search, UserMinus, ChevronLeft, Loader2, Info } from "lucide-react";
+import Link from "next/link";
+import { api } from "@/lib/apiClient";
+import type { SearchResult } from "@/lib/types";
+import debounce from "lodash/debounce";
+import { useRouter } from "next/navigation";
+
+export default function ManualEntryPage() {
+  const router = useRouter();
   const [query, setQuery] = useState("");
+  const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [selectedUser, setSelectedUser] = useState<any | null>(null);
-  const [showDropdown, setShowDropdown] = useState(false);
+  const [processing, setProcessing] = useState<string | null>(null);
 
-  // Debounced Auto-complete Effect
-  useEffect(() => {
-    if (query.trim().length >= 3) {
+  // Debounced search
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const handleSearch = useCallback(
+    debounce(async (q: string) => {
+      if (q.length < 2) {
+        setSuggestions([]);
+        return;
+      }
       setIsSearching(true);
-      setShowDropdown(true);
-      
-      // Mock API call delay
-      const timer = setTimeout(() => {
-        setSearchResults([
-          { id: "res_123", name: "Harshit Agarwal", phone: "+91 9876543210", room: "204 B", plan: "Standard Plan", balance: 42, diet: "Vegetarian" },
-          { id: "res_124", name: "Harsh Vardhan", phone: "+91 8888888888", room: "101 A", plan: "Guest Pass", balance: 1, diet: "Non-Veg" }
-        ].filter(u => u.name.toLowerCase().includes(query.toLowerCase()) || u.phone.includes(query)));
+      try {
+        const payload = await api.get<{ results: SearchResult[] }>(`/vendor/search-user?q=${encodeURIComponent(q)}`);
+        setSuggestions(payload.results || []);
+      } catch {
+        setSuggestions([]);
+      } finally {
         setIsSearching(false);
-      }, 500);
-      
-      return () => clearTimeout(timer);
-    } else {
-      setSearchResults([]);
-      setShowDropdown(false);
+      }
+    }, 400),
+    []
+  );
+
+  useEffect(() => {
+    handleSearch(query);
+  }, [query, handleSearch]);
+
+  const handleManualDeduct = async (residentId: string, name: string) => {
+    setProcessing(residentId);
+    try {
+      const siteId = localStorage.getItem("vendor_site_id");
+      if (!siteId) throw new Error("No site selected");
+
+      await api.post("/scan/manual", {
+        resident_id: residentId,
+        site_id: siteId,
+        block_reason_override: "MANUAL_ENTRY" // Or similar payload if required by backend
+      });
+
+      alert(`Successfully deducted meal for ${name}`);
+      router.back();
+    } catch (err: any) {
+      alert(`Error: ${err.message}`);
+    } finally {
+      setProcessing(null);
     }
-  }, [query]);
-
-  const handleSelect = (user: any) => {
-    setSelectedUser(user);
-    setQuery("");
-    setShowDropdown(false);
-  }
-
-  const handleDeduct = (e: React.FormEvent) => {
-    e.preventDefault();
-    alert(`Successfully deducted 1 meal from ${selectedUser.name}!`);
-    setSelectedUser(null);
-  }
+  };
 
   return (
-    <div className="p-6 pt-12 animate-in fade-in duration-500">
-      <h1 className="text-3xl font-bold mb-2">Manual Entry</h1>
-      <p className="text-neutral-400 mb-8 font-medium">Search resident by phone or name to deduct manually. (Min 3 chars)</p>
+    <div className="p-6 pt-8 bg-slate-50 min-h-screen">
+      <div className="flex items-center gap-4 mb-8">
+        <Link href="/vendor/scan" className="bg-white p-2.5 rounded-full shadow-sm">
+          <ChevronLeft className="w-5 h-5 text-slate-700" />
+        </Link>
+        <h1 className="text-2xl font-black text-slate-900">Manual Entry</h1>
+      </div>
 
-      <div className="mb-8 relative z-50">
-        <div className="relative">
-           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-500 w-5 h-5" />
-           <input 
-             type="text" 
-             placeholder="Enter phone or name..." 
-             value={query}
-             onChange={e => setQuery(e.target.value)}
-             className="w-full bg-neutral-800/80 border-2 border-neutral-700/50 rounded-[24px] py-4 pl-12 pr-4 text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-neutral-500 font-semibold shadow-inner"
-           />
-           {isSearching && (
-              <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-amber-500 animate-spin" />
-           )}
-        </div>
+      <div className="flex bg-blue-50 text-blue-700 p-4 rounded-xl items-start gap-3 mb-6 border border-blue-100 shadow-sm">
+        <Info className="w-5 h-5 mt-0.5 shrink-0" />
+        <p className="text-sm font-medium">Use this ONLY if the resident's QR code is unreadable or phone is dead.</p>
+      </div>
 
-        {/* Autocomplete Dropdown */}
-        {showDropdown && (
-          <div className="absolute top-full left-0 w-full mt-2 bg-neutral-800 border border-neutral-700 rounded-2xl shadow-2xl overflow-hidden max-h-60 overflow-y-auto">
-             {!isSearching && searchResults.length === 0 ? (
-               <div className="p-4 text-center text-neutral-500 text-sm">No residents found.</div>
-             ) : (
-               searchResults.map(user => (
-                  <button 
-                    key={user.id} 
-                    onClick={() => handleSelect(user)}
-                    className="w-full p-4 flex items-center gap-4 text-left hover:bg-neutral-700/50 transition-colors border-b border-neutral-700/30 last:border-0"
-                  >
-                     <div className="bg-neutral-900 p-2 rounded-full shrink-0">
-                        <User className="w-5 h-5 text-amber-500" />
-                     </div>
-                     <div>
-                        <div className="text-white font-bold">{user.name}</div>
-                        <div className="text-neutral-400 text-xs mt-0.5">{user.phone} • {user.room}</div>
-                     </div>
-                  </button>
-               ))
-             )}
-          </div>
+      <div className="relative mb-6">
+        <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+        <input 
+          type="text" 
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search name, phone, or ID..."
+          className="w-full bg-white border border-slate-200 rounded-2xl py-4 pl-12 pr-4 shadow-sm focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+        />
+        {isSearching && (
+          <Loader2 className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-indigo-500 animate-spin" />
         )}
       </div>
 
-      {selectedUser && (
-        <div className="bg-neutral-800/60 backdrop-blur-md rounded-[32px] p-6 border border-neutral-700/50 shadow-2xl animate-in slide-in-from-bottom-4 fade-in duration-300 relative z-0">
-           <div className="flex justify-between items-start mb-6">
-              <div>
-                 <h2 className="text-xl font-bold text-white">{selectedUser.name}</h2>
-                 <p className="text-neutral-400 text-sm mt-1">{selectedUser.phone} • Room {selectedUser.room}</p>
-                 <div className="flex gap-2 mt-3 block">
-                    <span className="bg-neutral-900 border border-neutral-700 text-amber-500 text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wider">{selectedUser.plan}</span>
-                    <span className="bg-neutral-900 border border-neutral-700 text-emerald-400 text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wider">{selectedUser.diet}</span>
-                 </div>
-              </div>
-              <div className="bg-neutral-900 p-4 rounded-2xl border border-neutral-700 text-center shadow-inner">
-                 <p className="text-neutral-500 text-xs font-bold uppercase tracking-widest mb-1">Balance</p>
-                 <p className="text-white text-3xl font-black">{selectedUser.balance}</p>
-              </div>
-           </div>
-           
-           <button onClick={handleDeduct} className="w-full bg-gradient-to-r from-amber-400 to-amber-500 text-neutral-950 font-black py-4 rounded-2xl flex items-center justify-center gap-2 transition-transform active:scale-95 shadow-lg shadow-amber-500/20">
-              <CheckCircle2 className="w-5 h-5 mb-0.5" />
-              Deduct 1 Meal
-           </button>
-        </div>
+      {!query ? (
+         <div className="text-center py-20 opacity-50">
+           <UserMinus className="w-16 h-16 mx-auto mb-4 text-slate-400" />
+           <p className="text-slate-500 font-bold">Search to view results</p>
+         </div>
+      ) : suggestions.length === 0 && !isSearching ? (
+         <div className="text-center py-20 bg-white border border-dashed border-slate-200 rounded-3xl">
+           <p className="text-slate-500 font-bold">No residents found.</p>
+         </div>
+      ) : (
+         <div className="space-y-4">
+           {suggestions.map(s => (
+             <div key={s.id} className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                  <h3 className="font-bold text-slate-900">{s.name}</h3>
+                  <div className="flex items-center gap-2 mt-1">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${s.dietary_preference === "VEG" ? "bg-emerald-50 text-emerald-600" : "bg-red-50 text-red-600"}`}>
+                      {s.dietary_preference || "VEG"}
+                    </span>
+                    <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-md font-mono">{s.id}</span>
+                  </div>
+                  {(s.room_number || s.phone) && (
+                    <p className="text-xs text-slate-400 mt-2 font-medium">Room {s.room_number} • {s.phone}</p>
+                  )}
+                </div>
+                <button 
+                  disabled={processing === s.id}
+                  onClick={() => handleManualDeduct(s.id, s.name)}
+                  className="bg-slate-900 text-white font-bold px-4 py-2 text-sm rounded-xl hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {processing === s.id ? <Loader2 className="w-4 h-4 animate-spin"/> : "Deduct"}
+                </button>
+             </div>
+           ))}
+         </div>
       )}
     </div>
-  )
+  );
 }

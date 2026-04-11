@@ -110,7 +110,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   let res = await doFetch(token);
 
   // ── 401 handling: queue-based token refresh to prevent race conditions ────
-  if (res.status === 401) {
+  if (res.status === 401 && !path.startsWith("/auth/")) {
     if (!isRefreshing) {
       isRefreshing = true;
       try {

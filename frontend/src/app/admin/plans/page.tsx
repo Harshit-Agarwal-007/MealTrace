@@ -1,47 +1,66 @@
 "use client";
-import { ArrowLeft, Plus, Settings } from "lucide-react";
+
+/**
+ * Admin Plans List
+ *
+ * GET /admin/plans
+ */
+
+import { useState, useEffect } from "react";
+import { Plus, Database, Loader2, IndianRupee } from "lucide-react";
 import Link from "next/link";
+import { api } from "@/lib/apiClient";
+import type { PlanInfo } from "@/lib/types";
 
 export default function AdminPlans() {
-  const plans = [
-    { id: 1, name: "Standard Plan", price: "₹4,500", duration: "30 Days", status: "Active" },
-    { id: 2, name: "Premium Plan", price: "₹6,000", duration: "30 Days", status: "Active" },
-    { id: 3, name: "Guest Pass (Single)", price: "₹250", duration: "24 Hours", status: "Active" },
-  ];
+  const [plans, setPlans] = useState<PlanInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api.get<{ plans: PlanInfo[] }>("/admin/plans")
+       .then(res => setPlans(res.plans || []))
+       .catch(() => {})
+       .finally(() => setLoading(false));
+  }, []);
 
   return (
-    <div className="p-6 pt-8 animate-in fade-in duration-500 space-y-6">
-      <div className="flex justify-between items-center mb-2">
-         <Link href="/admin" className="inline-flex items-center text-blue-600 font-bold hover:text-blue-700 transition-colors">
-            <ArrowLeft className="w-4 h-4 mr-1" /> Dashboard
+    <div className="p-6 pt-8 pb-28 animate-in fade-in duration-500 space-y-6">
+       <div className="flex justify-between items-center">
+         <h1 className="text-2xl font-bold text-slate-900">Meal Plans</h1>
+         <Link href="/admin/plans/new" className="bg-purple-600 p-2.5 rounded-full text-white shadow-lg shadow-purple-500/30 hover:bg-purple-700 block">
+            <Plus className="w-4 h-4" />
          </Link>
-         <Link href="/admin/plans/new" className="bg-blue-600 p-2.5 rounded-full text-white shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-transform active:scale-95 block">
-            <Plus className="w-5 h-5" />
-         </Link>
-      </div>
+       </div>
 
-      <h1 className="text-2xl font-bold text-slate-900">Plans Catalog</h1>
-      <p className="text-slate-500 mb-6">Manage user subscription offerings.</p>
-
-      <div className="grid gap-4">
-        {plans.map((plan) => (
-           <div key={plan.id} className="bg-gradient-to-br from-white to-slate-50 p-6 rounded-[24px] border border-slate-200 shadow-sm relative overflow-hidden group">
-              <div className="flex justify-between items-start mb-4">
-                 <div>
-                    <h3 className="font-bold text-lg text-slate-900">{plan.name}</h3>
-                    <p className="text-blue-600 font-black text-xl mt-1">{plan.price}</p>
+       <div className="bg-white border text-sm border-slate-200 rounded-[24px] overflow-hidden shadow-sm min-h-[50vh]">
+         {loading ? (
+             <div className="flex justify-center p-8"><Loader2 className="w-6 h-6 animate-spin text-purple-500"/></div>
+         ) : plans.length === 0 ? (
+             <div className="p-8 text-center text-slate-400 font-medium">No plans created.</div>
+         ) : (
+             plans.map((p, i) => (
+               <Link key={p.id} href={`/admin/plans/${p.id}`} className="block group">
+                 <div className={`p-4 flex justify-between items-center hover:bg-slate-50 transition-colors cursor-pointer ${i !== 0 ? 'border-t border-slate-100' : ''}`}>
+                    <div className="flex items-center gap-4">
+                       <div className="bg-purple-50 p-2.5 rounded-xl text-purple-600">
+                          <Database className="w-5 h-5"/>
+                       </div>
+                       <div>
+                          <p className="font-bold text-slate-900">{p.name}</p>
+                          <p className="text-slate-500 text-[10px] mt-0.5 uppercase tracking-wider">{p.meals_per_day} meals/d • {p.duration_days} days</p>
+                       </div>
+                    </div>
+                    <div className="text-right">
+                       <p className="font-black text-slate-800 flex items-center justify-end gap-0.5">
+                         <IndianRupee className="w-3 h-3 text-slate-400" /> {p.price}
+                       </p>
+                       <span className={`text-[9px] font-bold uppercase mt-0.5 inline-block ${p.is_active ? 'text-emerald-500' : 'text-slate-400'}`}>{p.is_active ? 'Active' : 'Disabled'}</span>
+                    </div>
                  </div>
-                 <Link href={`/admin/plans/${plan.id}`} className="p-2 text-slate-400 hover:text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Settings className="w-5 h-5" />
-                 </Link>
-              </div>
-              <div className="flex gap-2 text-xs font-bold uppercase tracking-wider">
-                 <span className="bg-slate-200 text-slate-600 px-3 py-1.5 rounded-lg">{plan.duration}</span>
-                 <span className="bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded-lg">{plan.status}</span>
-              </div>
-           </div>
-        ))}
-      </div>
+               </Link>
+             ))
+         )}
+       </div>
     </div>
   )
 }

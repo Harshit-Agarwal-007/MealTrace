@@ -1,97 +1,180 @@
 "use client";
-import { useEffect, useState } from "react";
-import { CheckCircle2, XCircle, ArrowLeft } from "lucide-react";
+
+/**
+ * PWA QR Scanner — MealTrace
+ *
+ * Captures `site_id` from localStorage.
+ * Reads QR payloads and sends them to POST /scan/validate.
+ * Includes auto-advance UX to rapidly clear queues.
+ */
+
+import { useState, useEffect } from "react";
+import { QrCode, History, Settings, Zap, CheckCircle2, XCircle, ChevronLeft, Search } from "lucide-react";
 import Link from "next/link";
+import { Scanner } from "@yudiel/react-qr-scanner";
 import { useRouter } from "next/navigation";
+import { api } from "@/lib/apiClient";
+import type { ScanValidateResponse } from "@/lib/types";
 
-export default function VendorScanner() {
-  const [scanResult, setScanResult] = useState<string | null>(null);
+// User-friendly mappings for block reasons
+const BLOCK_MESSAGES: Record<string, string> = {
+  ZERO_BALANCE: "Insufficient credits",
+  ALREADY_SCANNED: "Already scanned for this meal",
+  EXPIRED_PLAN: "Meal plan expired",
+  INVALID_TIME: "Outside operating hours",
+  INVALID_SITE: "Resident not assigned here",
+  INVALID_SIGNATURE: "QR Code Tampered/Invalid",
+  EXPIRED_QR: "QR Code Expired",
+  GUEST_PASS_USED: "Guest pass already used",
+  UNKNOWN: "System blocked scan",
+};
+
+export default function VendorScannerPage() {
   const router = useRouter();
+  const [siteId, setSiteId] = useState<string | null>(null);
+  const [siteName, setSiteName] = useState<string | null>(null);
+  
+  const [scanState, setScanState] = useState<"IDLE" | "PROCESSING" | "SUCCESS" | "BLOCKED">("IDLE");
+  const [scanResult, setScanResult] = useState<ScanValidateResponse | null>(null);
+  const [manualError, setManualError] = useState("");
 
-  const simulateSuccess = () => setScanResult("SUCCESS");
-  const simulateFail = () => setScanResult("FAIL");
+  useEffect(() => {
+    const sId = localStorage.getItem("vendor_site_id");
+    const sName = localStorage.getItem("vendor_site_name");
+    if (!sId) {
+      router.replace("/vendor"); // Ensure site is picked
+      return;
+    }
+    setSiteId(sId);
+    setSiteName(sName);
+  }, [router]);
 
-  if (scanResult === "SUCCESS") {
-     return (
-       <div className="h-full bg-emerald-500 flex flex-col items-center justify-center p-6 animate-in zoom-in duration-300 relative overflow-hidden z-10 w-full min-h-screen">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-400 to-emerald-600 -z-10"></div>
-          <div className="bg-white/20 p-6 rounded-full mb-8 animate-[bounce_1s_ease-in-out]">
-             <CheckCircle2 className="w-24 h-24 text-white" />
-          </div>
-          <h2 className="text-5xl font-black text-white mb-2 tracking-tight">Approved</h2>
-          <p className="text-emerald-50 text-xl font-medium text-center">Harshit Agarwal</p>
-          <div className="mt-4 flex gap-3">
-             <span className="bg-emerald-800/80 border border-emerald-600/50 text-emerald-100 px-4 py-1.5 rounded-full text-sm font-bold shadow-sm backdrop-blur-sm">Standard Plan</span>
-             <span className="bg-emerald-800/80 border border-emerald-600/50 text-emerald-100 px-4 py-1.5 rounded-full text-sm font-bold shadow-sm backdrop-blur-sm shadow-emerald-900/30">Vegetarian</span>
-          </div>
-          <div className="mt-8 bg-black/20 px-8 py-4 rounded-3xl flex items-center gap-4 backdrop-blur-md border border-white/10">
-             <div className="text-center">
-                <p className="text-emerald-100 text-xs font-bold uppercase tracking-widest mb-1">Balance Remaining</p>
-                <p className="text-white font-black text-4xl">41</p>
-             </div>
-          </div>
-          <button onClick={() => setScanResult(null)} className="mt-12 bg-white text-emerald-600 font-bold text-lg px-8 py-4 rounded-2xl w-full active:scale-95 transition-transform shadow-xl shadow-emerald-900/20">
-             Scan Next User
-          </button>
-       </div>
-     )
-  }
+  // Handle successful QR detection
+  const handleScan = async (text: string) => {
+    if (scanState !== "IDLE") return;
+    setScanState("PROCESSING");
+    setManualError("");
 
-  if (scanResult === "FAIL") {
-     return (
-       <div className="h-full bg-red-500 flex flex-col items-center justify-center p-6 animate-in zoom-in duration-300 relative overflow-hidden z-10 w-full min-h-screen">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-red-400 to-red-600 -z-10"></div>
-          <div className="bg-white/20 p-6 rounded-full mb-8 animate-pulse">
-             <XCircle className="w-24 h-24 text-white" />
-          </div>
-          <h2 className="text-5xl font-black text-white mb-2 tracking-tight">Declined</h2>
-          <p className="text-red-50 text-lg font-bold text-center bg-black/20 px-6 py-3 rounded-2xl mt-4 backdrop-blur-md border border-white/10">Outside Meal Window</p>
-          
-          <button onClick={() => setScanResult(null)} className="mt-12 bg-white text-red-600 font-bold text-lg px-8 py-4 rounded-2xl w-full active:scale-95 transition-transform shadow-xl shadow-red-900/20">
-             Try Again
-          </button>
-       </div>
-     )
-  }
+    try {
+      const res = await api.post<ScanValidateResponse>("/scan/validate", {
+        qr_payload: text,
+        site_id: siteId,
+      });
+
+      setScanResult(res);
+      setScanState(res.status);
+      
+      // Auto-reset UI after 2.5s for fast queue clearing
+      setTimeout(() => {
+        setScanState("IDLE");
+        setScanResult(null);
+      }, 2500);
+
+    } catch (err: any) {
+      setScanResult({
+        status: "BLOCKED",
+        block_reason: "UNKNOWN"
+      });
+      setManualError(err.message || "Network error");
+      setScanState("BLOCKED");
+      
+      setTimeout(() => {
+        setScanState("IDLE");
+        setScanResult(null);
+        setManualError("");
+      }, 3000);
+    }
+  };
 
   return (
-    <div className="h-[100dvh] flex flex-col animate-in fade-in absolute inset-0 w-full bg-black z-10">
-       <div className="p-4 flex items-center relative z-20 bg-gradient-to-b from-black/80 to-transparent pb-10">
-          <Link href="/vendor" className="bg-neutral-800/80 p-3 rounded-full absolute left-4 active:scale-95 transition-all backdrop-blur-sm border border-neutral-700">
-            <ArrowLeft className="w-5 h-5 text-white" />
+    <div className="flex flex-col h-[100dvh] bg-black text-white relative">
+      {/* Top Navigation */}
+      <div className="absolute top-0 w-full z-10 p-4 safe-top flex justify-between items-center bg-gradient-to-b from-black/80 to-transparent">
+        <Link href="/vendor" className="bg-white/10 backdrop-blur-md p-2 rounded-full">
+           <ChevronLeft className="w-6 h-6 text-white" />
+        </Link>
+        <div className="flex gap-3">
+          <Link href="/vendor/manual" className="bg-white/10 backdrop-blur-md p-2 rounded-full flex items-center justify-center">
+             <Search className="w-5 h-5 text-white" />
           </Link>
-          <h2 className="flex-1 text-center font-bold text-xl text-white tracking-wide">Scan QR</h2>
-       </div>
-       
-       <div className="flex-1 relative flex flex-col items-center justify-center overflow-hidden">
-          <div className="absolute inset-0 bg-black">
-              <div className="w-full h-full opacity-40 bg-[url('https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=1000&auto=format&fit=crop')] bg-cover bg-center grayscale blur-xs"></div>
-          </div>
-          
-          {/* Scanner Overlay */}
-          <div className="relative z-10 w-72 h-72 rounded-[40px] flex items-center justify-center mb-10 shadow-[0_0_0_1000px_rgba(0,0,0,0.6)]">
-              {/* Corner markers */}
-              <div className="w-12 h-12 border-t-8 border-l-8 border-amber-500 absolute top-0 left-0 rounded-tl-3xl"></div>
-              <div className="w-12 h-12 border-t-8 border-r-8 border-amber-500 absolute top-0 right-0 rounded-tr-3xl"></div>
-              <div className="w-12 h-12 border-b-8 border-l-8 border-amber-500 absolute bottom-0 left-0 rounded-bl-3xl"></div>
-              <div className="w-12 h-12 border-b-8 border-r-8 border-amber-500 absolute bottom-0 right-0 rounded-br-3xl"></div>
-              
-              {/* Scanning line */}
-              <div className="absolute top-0 w-full h-1 bg-amber-500 shadow-[0_0_20px_rgba(245,158,11,1)] animate-[scan_2.5s_ease-in-out_infinite]"></div>
-          </div>
-          <p className="relative z-10 mt-8 font-bold text-white text-lg bg-black/40 px-6 py-2 rounded-full backdrop-blur-md tracking-wide">Align QR code within frame</p>
+          <button className="bg-white/10 backdrop-blur-md p-2 rounded-full">
+             <Settings className="w-5 h-5 text-white" />
+          </button>
+        </div>
+      </div>
 
-          <div className="relative z-10 flex gap-4 mt-auto mb-10 border border-neutral-800 bg-neutral-900/80 p-2 rounded-2xl backdrop-blur-xl">
-             <button onClick={simulateSuccess} className="bg-emerald-500/20 text-emerald-400 px-6 py-3 rounded-xl text-sm font-bold hover:bg-emerald-500/30 transition-colors">Simulate Success</button>
-             <button onClick={simulateFail} className="bg-red-500/20 text-red-400 px-6 py-3 rounded-xl text-sm font-bold hover:bg-red-500/30 transition-colors">Simulate Fail</button>
+      {/* Main Scanner Area */}
+      <div className="flex-1 relative bg-black flex items-center justify-center overflow-hidden">
+        
+        {/* Core Scanner Library */}
+        <div className="absolute inset-0 z-0 flex items-center justify-center">
+           {scanState === "IDLE" && (
+             <Scanner 
+               onResult={(text) => handleScan(text)} 
+               onError={(error) => console.log(error?.message)}
+               options={{
+                 delayBetweenScanAttempts: 300,
+                 delayBetweenScanSuccess: 1000
+               }}
+               components={{ audio: false, zoom: false }}
+             />
+           )}
+        </div>
+
+        {/* Reticle Overlay */}
+        {scanState === "IDLE" && (
+          <div className="z-10 pointer-events-none relative flex flex-col items-center justify-center h-full w-full">
+            <div className="w-64 h-64 border-2 border-white/40 rounded-3xl relative">
+              <div className="absolute -top-1 -left-1 w-8 h-8 border-t-4 border-l-4 border-emerald-400 rounded-tl-3xl"></div>
+              <div className="absolute -top-1 -right-1 w-8 h-8 border-t-4 border-r-4 border-emerald-400 rounded-tr-3xl"></div>
+              <div className="absolute -bottom-1 -left-1 w-8 h-8 border-b-4 border-l-4 border-emerald-400 rounded-bl-3xl"></div>
+              <div className="absolute -bottom-1 -right-1 w-8 h-8 border-b-4 border-r-4 border-emerald-400 rounded-br-3xl"></div>
+              
+              <div className="absolute left-0 w-full h-0.5 bg-emerald-400/50 shadow-[0_0_8px_rgba(52,211,153,0.8)] top-0 animate-[scan_2s_ease-in-out_infinite]"></div>
+            </div>
+            {siteName && (
+               <div className="mt-8 bg-black/50 backdrop-blur-md px-4 py-1.5 rounded-full text-xs font-medium border border-white/10 tracking-widest uppercase">
+                 Scan at {siteName}
+               </div>
+            )}
           </div>
-       </div>
-       <style dangerouslySetInnerHTML={{__html: `
-        @keyframes scan {
-            0%, 100% { top: 5%; }
-            50% { top: 95%; }
-        }
-       `}} />
+        )}
+
+        {/* Status Overlays */}
+        {scanState === "SUCCESS" && (
+          <div className="absolute inset-0 z-20 bg-emerald-500 flex flex-col items-center justify-center animate-in fade-in duration-200">
+            <CheckCircle2 className="w-32 h-32 text-white mb-4 drop-shadow-lg" />
+            <h2 className="text-4xl font-black tracking-tight drop-shadow-md text-white">{scanResult?.resident_name || "Success"}</h2>
+            {scanResult?.dietary_preference && (
+               <p className="font-bold text-emerald-100 bg-black/10 px-4 py-1 rounded-full mt-2 uppercase tracking-widest text-sm">
+                 {scanResult.dietary_preference}
+               </p>
+            )}
+            <p className="font-medium text-emerald-100 mt-4 bg-black/20 px-4 py-2 rounded-xl text-sm border border-emerald-400/30">
+              Bal: {scanResult?.balance_after} cr
+            </p>
+          </div>
+        )}
+
+        {scanState === "BLOCKED" && (
+          <div className="absolute inset-0 z-20 bg-red-600 flex flex-col items-center justify-center animate-in fade-in duration-200 px-6 text-center">
+            <XCircle className="w-32 h-32 text-white mb-4 drop-shadow-lg" />
+            <h2 className="text-3xl font-black tracking-tight drop-shadow-md text-white mb-2">Scan Blocked</h2>
+            <div className="bg-white text-red-600 px-4 py-2 rounded-xl font-bold shadow-lg">
+               {BLOCK_MESSAGES[scanResult?.block_reason || "UNKNOWN"]}
+            </div>
+            {manualError && <p className="text-xs text-red-200 mt-4 opacity-70">{manualError}</p>}
+          </div>
+        )}
+
+        {scanState === "PROCESSING" && (
+          <div className="absolute inset-0 z-20 bg-slate-900/90 backdrop-blur-sm flex flex-col items-center justify-center">
+            <div className="w-16 h-16 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin mb-4" />
+            <p className="font-medium text-indigo-200 tracking-wider text-sm animate-pulse">VERIFYING QR...</p>
+          </div>
+        )}
+      </div>
+
     </div>
-  )
+  );
 }

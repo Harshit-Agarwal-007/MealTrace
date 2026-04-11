@@ -1,79 +1,110 @@
 "use client";
-import { ShoppingCart, ArrowLeft } from "lucide-react";
-import Link from "next/link";
+
+/**
+ * Plans Page
+ *
+ * GET /plans (active plans)
+ * POST /payment/plans/{id}/checkout (create razorpay order)
+ *
+ * Mocking the actual Razorpay widget window.Razorpay for now,
+ * but the backend flow is fully real.
+ */
+
 import { useState, useEffect } from "react";
+import { CheckCircle2, ChevronLeft, CreditCard, Loader2 } from "lucide-react";
+import Link from "next/link";
+import { api } from "@/lib/apiClient";
+import type { PlanInfo, CreateOrderResponse } from "@/lib/types";
 import { useRouter } from "next/navigation";
 
 export default function PlansPage() {
-  const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const [plans, setPlans] = useState<PlanInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(false);
 
-  // Dynamically load Razorpay SDK
   useEffect(() => {
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    document.body.appendChild(script);
-    return () => { document.body.removeChild(script); };
+    api.get<PlanInfo[]>("/plans")
+       .then(setPlans)
+       .catch(() => {})
+       .finally(() => setLoading(false));
   }, []);
 
-  const handleCheckout = () => {
-    setLoading(true);
-    // Mocking an order creation delay
-    setTimeout(() => {
-       const options = {
-          key: "rzp_test_mockKey123", // Mock key
-          amount: 450000, // Amount in paise (₹4,500)
-          currency: "INR",
-          name: "MealTrace Digital",
-          description: "30-Day Standard Plan",
-          image: "/icon-192x192.png",
-          handler: function (response: any) {
-             // Success Handler
-             router.push('/resident'); 
-          },
-          prefill: {
-             name: "Harshit Agarwal",
-             email: "harshit@example.com",
-             contact: "9999999999"
-          },
-          theme: { color: "#4f46e5" }
-       };
+  const handlePurchase = async () => {
+    if (!selectedPlanId) return;
+    setProcessing(true);
+    try {
+      const order = await api.post<CreateOrderResponse>(`/payment/plans/${selectedPlanId}/checkout`);
+      
+      // Simulate Razorpay window (for demo purposes)
+      // In production, load https://checkout.razorpay.com/v1/checkout.js and new window.Razorpay(...)
+      
+      // We will pretend Payment succeeded and call backend success endpoint
+      // Note: Actually, in Razorpay webhooks handle the success. For PWA demo we assume success via UI trigger or we wait.
+      alert(`Razorpay order created! ID: ${order.order_id}\nAmount: ${order.amount / 100} INR`);
+      router.push("/resident");
 
-       setLoading(false);
-       if (window.hasOwnProperty('Razorpay')) {
-           const rzp = new (window as any).Razorpay(options);
-           rzp.open();
-       } else {
-           alert("Razorpay SDK failed to load. Are you offline?");
-       }
-    }, 800);
+    } catch (err: any) {
+      alert(err.message || "Failed to create order");
+    } finally {
+      setProcessing(false);
+    }
   };
 
   return (
-    <div className="p-6 pt-8 animate-in fade-in duration-500">
-      <Link href="/resident" className="inline-flex items-center text-indigo-600 font-bold mb-6 hover:text-indigo-700 transition-colors">
-         <ArrowLeft className="w-5 h-5 mr-2" /> Back to Dashboard
-      </Link>
-      <h1 className="text-2xl font-bold text-gray-900 mb-2">Top Up Plan</h1>
-      <p className="text-gray-500 mb-8">Purchase meals for your account.</p>
-      
-      <div className="space-y-4">
-         <div className="bg-gradient-to-br from-indigo-600 to-purple-600 p-6 rounded-3xl text-white shadow-xl shadow-indigo-200">
-            <h2 className="text-xl font-bold mb-1">Standard Plan (30 Days)</h2>
-            <p className="text-indigo-100 text-sm mb-6">3 meals per day (Breakfast, Lunch, Dinner)</p>
-            <div className="flex justify-between items-end">
-               <span className="text-3xl font-black">₹4,500</span>
-               <button 
-                 onClick={handleCheckout} 
-                 disabled={loading}
-                 className="bg-white text-indigo-600 px-6 py-2 rounded-xl font-bold shadow-lg active:scale-95 transition-transform flex items-center gap-2 disabled:opacity-50"
-               >
-                 {loading ? <div className="w-4 h-4 rounded-full border-2 border-indigo-600 border-t-transparent animate-spin"/> : <ShoppingCart className="w-4 h-4" />} Buy
-               </button>
+    <div className="p-6 pt-8 pb-24 animate-in fade-in duration-500 bg-slate-50 min-h-screen">
+      <div className="flex items-center gap-4 mb-8">
+        <Link href="/resident" className="bg-white p-2.5 rounded-full shadow-sm">
+          <ChevronLeft className="w-5 h-5 text-slate-700" />
+        </Link>
+        <h1 className="text-2xl font-black text-slate-900">Meal Plans</h1>
+      </div>
+
+      {loading ? (
+         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
+      ) : (
+        <div className="space-y-6">
+          {plans.map((plan) => (
+            <div 
+              key={plan.id}
+              onClick={() => setSelectedPlanId(plan.id)}
+              className={`bg-white rounded-3xl p-6 transition-all duration-300 cursor-pointer border-2 relative overflow-hidden ${
+                selectedPlanId === plan.id 
+                  ? "border-indigo-600 shadow-xl shadow-indigo-100 scale-[1.02]" 
+                  : "border-transparent shadow-md hover:shadow-lg"
+              }`}
+            >
+              <div className="flex justify-between items-start mb-4">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-900">{plan.name}</h3>
+                  <p className="text-slate-500 text-sm mt-1">{plan.meals_per_day} meals/day for {plan.duration_days} days</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-2xl font-black text-indigo-600">₹{plan.price}</p>
+                </div>
+              </div>
+              
+              <ul className="space-y-2 mt-6">
+                <li className="flex items-center gap-2 text-sm text-slate-600 font-medium">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {plan.meal_count} Total Credits
+                </li>
+              </ul>
             </div>
-         </div>
+          ))}
+        </div>
+      )}
+
+      {/* Sticky Bottom Bar */}
+      <div className="fixed bottom-0 left-0 w-full bg-white border-t border-slate-100 p-4 pb-safe animate-in slide-in-from-bottom">
+         <button 
+           disabled={!selectedPlanId || processing}
+           onClick={handlePurchase}
+           className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:scale-100 active:scale-95 transition-all shadow-lg shadow-indigo-200"
+         >
+            {processing ? <Loader2 className="w-5 h-5 animate-spin"/> : <><CreditCard className="w-5 h-5" /> Proceed to Pay</>}
+         </button>
       </div>
     </div>
-  )
+  );
 }
