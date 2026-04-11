@@ -20,6 +20,10 @@ export default function VendorScanner() {
           </div>
           <h2 className="text-5xl font-black text-white mb-2 tracking-tight">Approved</h2>
           <p className="text-emerald-50 text-xl font-medium text-center">Harshit Agarwal</p>
+          <div className="mt-4 flex gap-3">
+             <span className="bg-emerald-800/80 border border-emerald-600/50 text-emerald-100 px-4 py-1.5 rounded-full text-sm font-bold shadow-sm backdrop-blur-sm">Standard Plan</span>
+             <span className="bg-emerald-800/80 border border-emerald-600/50 text-emerald-100 px-4 py-1.5 rounded-full text-sm font-bold shadow-sm backdrop-blur-sm shadow-emerald-900/30">Vegetarian</span>
+          </div>
           <div className="mt-8 bg-black/20 px-8 py-4 rounded-3xl flex items-center gap-4 backdrop-blur-md border border-white/10">
              <div className="text-center">
                 <p className="text-emerald-100 text-xs font-bold uppercase tracking-widest mb-1">Balance Remaining</p>

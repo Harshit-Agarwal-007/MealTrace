@@ -18,8 +18,8 @@ export default function VendorManualEntry() {
       // Mock API call delay
       const timer = setTimeout(() => {
         setSearchResults([
-          { id: "res_123", name: "Harshit Agarwal", phone: "+91 9876543210", room: "204 B", plan: "Standard Plan", balance: 42 },
-          { id: "res_124", name: "Harsh Vardhan", phone: "+91 8888888888", room: "101 A", plan: "Guest Pass", balance: 1 }
+          { id: "res_123", name: "Harshit Agarwal", phone: "+91 9876543210", room: "204 B", plan: "Standard Plan", balance: 42, diet: "Vegetarian" },
+          { id: "res_124", name: "Harsh Vardhan", phone: "+91 8888888888", room: "101 A", plan: "Guest Pass", balance: 1, diet: "Non-Veg" }
         ].filter(u => u.name.toLowerCase().includes(query.toLowerCase()) || u.phone.includes(query)));
         setIsSearching(false);
       }, 500);
@@ -95,7 +95,10 @@ export default function VendorManualEntry() {
               <div>
                  <h2 className="text-xl font-bold text-white">{selectedUser.name}</h2>
                  <p className="text-neutral-400 text-sm mt-1">{selectedUser.phone} • Room {selectedUser.room}</p>
-                 <span className="inline-block mt-3 bg-neutral-900 border border-neutral-700 text-amber-500 text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wider">{selectedUser.plan}</span>
+                 <div className="flex gap-2 mt-3 block">
+                    <span className="bg-neutral-900 border border-neutral-700 text-amber-500 text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wider">{selectedUser.plan}</span>
+                    <span className="bg-neutral-900 border border-neutral-700 text-emerald-400 text-xs font-bold px-3 py-1.5 rounded-full uppercase tracking-wider">{selectedUser.diet}</span>
+                 </div>
               </div>
               <div className="bg-neutral-900 p-4 rounded-2xl border border-neutral-700 text-center shadow-inner">
                  <p className="text-neutral-500 text-xs font-bold uppercase tracking-widest mb-1">Balance</p>
