@@ -101,6 +101,35 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
             </div>
          </div>
       </div>
+
+      {/* Site Analytics section */}
+      <div className="mt-8">
+         <h2 className="text-xl font-bold text-slate-800 ml-2 mb-4">Site Analytics</h2>
+         
+         <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="bg-slate-900 rounded-[24px] p-5 shadow-lg border border-slate-800 text-white">
+               <p className="text-slate-400 text-xs font-bold uppercase tracking-wider mb-2">Assigned Residents</p>
+               <p className="text-3xl font-black">245</p>
+            </div>
+            <div className="bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100">
+               <p className="text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Scans Today</p>
+               <p className="text-3xl font-black text-blue-600">612</p>
+            </div>
+         </div>
+
+         <h3 className="font-bold text-slate-800 ml-2 mb-3">Live Local Scans</h3>
+         <div className="bg-white rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 overflow-hidden divide-y divide-slate-50">
+            {[1, 2, 3].map((i) => (
+               <div key={i} className="p-4 flex justify-between items-center hover:bg-slate-50 transition-colors">
+                  <div>
+                    <h4 className="font-bold text-slate-900 text-sm">Resident #{8000 + i}</h4>
+                    <p className="text-slate-500 text-xs text-emerald-600 font-bold">Lunch • SUCCESS</p>
+                  </div>
+                  <span className="text-slate-400 text-xs">{3 * i} min ago</span>
+               </div>
+            ))}
+         </div>
+      </div>
     </div>
   )
 }

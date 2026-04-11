@@ -33,9 +33,9 @@ export default function ResidentDashboard() {
            <p className="text-indigo-100 text-sm font-medium">Hello,</p>
            <h1 className="text-2xl font-bold">Harshit Agarwal</h1>
          </div>
-         <button className="bg-white/10 p-2.5 rounded-full hover:bg-white/20 transition-colors active:scale-95">
+         <Link href="/resident/notifications" className="bg-white/10 p-2.5 rounded-full hover:bg-white/20 transition-colors active:scale-95">
             <Bell className="w-5 h-5 text-white" />
-         </button>
+         </Link>
        </div>
 
        {/* Balance Card */}

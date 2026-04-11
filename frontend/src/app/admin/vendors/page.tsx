@@ -14,9 +14,9 @@ export default function AdminVendors() {
     <div className="p-6 pt-8 animate-in fade-in duration-500 space-y-6">
        <div className="flex justify-between items-center">
          <h1 className="text-2xl font-bold text-slate-900">Vendors</h1>
-         <button className="bg-blue-600 p-2.5 rounded-full text-white shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-transform active:scale-95">
+         <Link href="/admin/vendors/new" className="bg-blue-600 p-2.5 rounded-full text-white shadow-lg shadow-blue-500/30 hover:bg-blue-700 transition-transform active:scale-95 block">
             <Plus className="w-5 h-5" />
-         </button>
+         </Link>
        </div>
 
        <div className="relative">

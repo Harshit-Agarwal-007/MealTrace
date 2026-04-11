@@ -77,7 +77,8 @@ export default function LoginPage() {
 
             {/* Password Field */}
             <div className="space-y-1">
-              <div className="flex items-center justify-end">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700 block">Password</label>
                 <div className="text-sm">
                   <Link href="/forgot-password" className="font-semibold text-indigo-600 hover:text-indigo-500">
                     Forgot your password?

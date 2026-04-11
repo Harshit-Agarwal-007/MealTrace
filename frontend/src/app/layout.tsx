@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
-import { Providers } from "./providers";
+import { Providers } from "@/app/providers";
 
 const inter = Inter({
   variable: "--font-inter",
@@ -38,6 +38,25 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col font-sans bg-gray-50 text-gray-900">
         <Providers>{children}</Providers>
+        
+        {/* Service Worker Registration */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').then(function(registration) {
+                    console.log('Main SW registered with scope: ', registration.scope);
+                  }, function(err) {
+                    console.log('Main SW registration failed: ', err);
+                  });
+                  // Optionally register firebase messaging SW if FCM is utilized
+                  // navigator.serviceWorker.register('/firebase-messaging-sw.js');
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   );

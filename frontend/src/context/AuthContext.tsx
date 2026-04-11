@@ -41,7 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
          else if (savedRole === "SUPER_ADMIN") router.replace("/admin");
       }
     } else {
-        if (pathname !== "/login" && pathname !== "/register") {
+        if (pathname !== "/login" && pathname !== "/register" && pathname !== "/forgot-password") {
             router.push("/login");
         }
     }
