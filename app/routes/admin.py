@@ -882,6 +882,129 @@ async def admin_credit_overrides_log(
 
 
 # ═══════════════════════════════════════
+# PAYMENTS (Admin view)
+# ═══════════════════════════════════════
+
+@router.get("/payments")
+async def admin_list_payments(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None, description="Filter by status: SUCCESS, PENDING, FAILED"),
+    resident_id: Optional[str] = Query(None, description="Filter by resident"),
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Paginated list of Razorpay payment transactions.
+
+    Returns payment records with resident name enrichment.
+    Used by the admin Payments dashboard to show transaction history,
+    revenue totals, and per-plan breakdowns.
+    """
+    db = get_db()
+
+    query = db.collection("payments")
+    if status:
+        query = query.where("status", "==", status)
+    if resident_id:
+        query = query.where("resident_id", "==", resident_id)
+
+    all_docs = list(query.get())
+
+    # Sort by timestamp descending
+    sorted_docs = sorted(
+        all_docs,
+        key=lambda d: d.to_dict().get("timestamp", datetime.min.replace(tzinfo=timezone.utc)),
+        reverse=True,
+    )
+
+    total = len(sorted_docs)
+    offset = (page - 1) * page_size
+    page_docs = sorted_docs[offset: offset + page_size]
+
+    # Cache resident names
+    resident_cache = {}
+    records = []
+    for doc in page_docs:
+        data = doc.to_dict()
+        rid = data.get("resident_id", "")
+
+        if rid and rid not in resident_cache:
+            rdoc = db.collection("residents").document(rid).get()
+            resident_cache[rid] = rdoc.to_dict().get("name") if rdoc.exists else None
+
+        records.append({
+            "id": doc.id,
+            "resident_id": rid,
+            "resident_name": resident_cache.get(rid),
+            "plan_id": data.get("plan_id"),
+            "razorpay_order_id": data.get("razorpay_order_id", ""),
+            "razorpay_payment_id": data.get("razorpay_payment_id"),
+            "amount": data.get("amount", 0),  # in paise
+            "status": data.get("status", "UNKNOWN"),
+            "is_guest_pass": data.get("is_guest_pass", False),
+            "timestamp": str(data.get("timestamp", "")),
+        })
+
+    return {
+        "payments": records,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "has_more": (offset + page_size) < total,
+    }
+
+
+@router.get("/payments/summary")
+async def admin_payments_summary(
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Revenue summary for the payments dashboard.
+    Returns total revenue, successful payments, guest pass revenue,
+    and plan revenue — all from the payments Firestore collection.
+    """
+    db = get_db()
+    all_docs = list(db.collection("payments").get())
+
+    total_revenue = 0
+    plan_revenue = 0
+    guest_pass_revenue = 0
+    success_count = 0
+    pending_count = 0
+    failed_count = 0
+
+    for doc in all_docs:
+        data = doc.to_dict()
+        status = data.get("status", "")
+        amount = data.get("amount", 0)  # paise
+
+        if status == "SUCCESS":
+            success_count += 1
+            total_revenue += amount
+            if data.get("is_guest_pass"):
+                guest_pass_revenue += amount
+            else:
+                plan_revenue += amount
+        elif status == "PENDING":
+            pending_count += 1
+        elif status == "FAILED":
+            failed_count += 1
+
+    return {
+        "total_revenue_paise": total_revenue,
+        "total_revenue_inr": total_revenue / 100,
+        "plan_revenue_inr": plan_revenue / 100,
+        "guest_pass_revenue_inr": guest_pass_revenue / 100,
+        "success_count": success_count,
+        "pending_count": pending_count,
+        "failed_count": failed_count,
+        "total_transactions": len(all_docs),
+    }
+
+
+
+
+# ═══════════════════════════════════════
 # BROADCAST NOTIFICATION
 # ═══════════════════════════════════════
 

@@ -70,9 +70,9 @@ export default function AdminDashboard() {
              <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
              <span className="text-[10px] font-bold uppercase leading-tight">Broadcast</span>
           </Link>
-          <Link href="/admin/reports" className="bg-emerald-50 text-emerald-700 p-4 rounded-[20px] flex flex-col items-center gap-2 border border-emerald-100 hover:bg-emerald-100 transition-colors shadow-sm text-center">
-             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-             <span className="text-[10px] font-bold uppercase leading-tight">Export</span>
+          <Link href="/admin/payments" className="bg-emerald-50 text-emerald-700 p-4 rounded-[20px] flex flex-col items-center gap-2 border border-emerald-100 hover:bg-emerald-100 transition-colors shadow-sm text-center">
+             <svg xmlns="http://www.w3.org/2000/svg" className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H7"/></svg>
+             <span className="text-[10px] font-bold uppercase leading-tight">Payments</span>
           </Link>
        </div>
 
