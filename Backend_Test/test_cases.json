@@ -1,0 +1,545 @@
+[
+  {
+    "id": "health_root",
+    "method": "GET",
+    "endpoint": "/",
+    "expected_behavior": "Should return HTTP 200. Body must contain a 'status' or 'message' field confirming the service is alive."
+  },
+  {
+    "id": "health_check",
+    "method": "GET",
+    "endpoint": "/health",
+    "expected_behavior": "Should return HTTP 200. Body must contain a 'status' field (e.g. 'ok' or 'healthy') and confirmation of Firebase connectivity."
+  },
+  {
+    "id": "dev_login_resident",
+    "method": "POST",
+    "endpoint": "/dev/login",
+    "payload": { "role": "RESIDENT" },
+    "expected_behavior": "Should return HTTP 200. Body must contain 'access_token', 'refresh_token', 'token_type' set to 'bearer', and 'role' set to 'RESIDENT'."
+  },
+  {
+    "id": "dev_login_vendor",
+    "method": "POST",
+    "endpoint": "/dev/login",
+    "payload": { "role": "VENDOR" },
+    "expected_behavior": "Should return HTTP 200. Body must contain 'access_token', 'refresh_token', 'token_type' set to 'bearer', and 'role' set to 'VENDOR'."
+  },
+  {
+    "id": "dev_login_super_admin",
+    "method": "POST",
+    "endpoint": "/dev/login",
+    "payload": { "role": "SUPER_ADMIN" },
+    "expected_behavior": "Should return HTTP 200. Body must contain 'access_token', 'refresh_token', 'token_type' set to 'bearer', and 'role' set to 'SUPER_ADMIN'."
+  },
+  {
+    "id": "dev_login_invalid_role",
+    "method": "POST",
+    "endpoint": "/dev/login",
+    "payload": { "role": "HACKER" },
+    "expected_behavior": "Should return HTTP 400. Body must indicate an invalid or unrecognised role was provided."
+  },
+  {
+    "id": "dev_list_users",
+    "method": "GET",
+    "endpoint": "/dev/users",
+    "expected_behavior": "Should return HTTP 200. Body must contain a 'users' list. Each user entry should have at minimum 'id', 'name', 'email', and 'role' fields."
+  },
+  {
+    "id": "dev_generate_qr",
+    "method": "GET",
+    "endpoint": "/dev/generate-qr/{TEST_RESIDENT_ID}",
+    "expected_behavior": "Should return HTTP 200. Body must contain 'resident_id', 'site_id', 'qr_payload', and 'qr_base64'. The qr_base64 should be a non-empty base64 string."
+  },
+  {
+    "id": "dev_generate_qr_invalid",
+    "method": "GET",
+    "endpoint": "/dev/generate-qr/nonexistent_resident_xyz",
+    "expected_behavior": "Should return HTTP 404. Body must indicate that the resident was not found."
+  },
+  {
+    "id": "dev_list_sites",
+    "method": "GET",
+    "endpoint": "/dev/sites",
+    "expected_behavior": "Should return HTTP 200. Body must contain a 'sites' list. Each site entry should have at minimum 'id', 'name', and 'meal_windows'."
+  },
+  {
+    "id": "auth_register_missing_fields",
+    "method": "POST",
+    "endpoint": "/auth/register",
+    "payload": { "email": "incomplete@test.com" },
+    "expected_behavior": "Should return HTTP 422 (Unprocessable Entity) because required fields like name, password, site_id are missing."
+  },
+  {
+    "id": "auth_login_invalid_token",
+    "method": "POST",
+    "endpoint": "/auth/login",
+    "payload": { "firebase_id_token": "this_is_not_a_real_firebase_token" },
+    "expected_behavior": "Should return HTTP 401. Body must indicate that the Firebase ID token is invalid or authentication has failed."
+  },
+  {
+    "id": "auth_forgot_password",
+    "method": "POST",
+    "endpoint": "/auth/forgot-password",
+    "payload": { "email": "any_email@example.com" },
+    "expected_behavior": "Should return HTTP 200. Body must always indicate success to prevent email enumeration. Should contain 'status' of 'success' and a friendly message about the password reset link."
+  },
+  {
+    "id": "auth_refresh_invalid_token",
+    "method": "POST",
+    "endpoint": "/auth/refresh-token",
+    "payload": { "refresh_token": "fake_refresh_token_xyz" },
+    "expected_behavior": "Should return HTTP 401. Body must indicate the refresh token is invalid or expired."
+  },
+  {
+    "id": "auth_logout",
+    "method": "POST",
+    "endpoint": "/auth/logout",
+    "auth_role": "RESIDENT",
+    "expected_behavior": "Should return HTTP 200. Body must contain 'status' of 'success' and a message telling the client to discard tokens."
+  },
+  {
+    "id": "auth_update_fcm_token",
+    "method": "POST",
+    "endpoint": "/auth/fcm-token",
+    "auth_role": "RESIDENT",
+    "payload": { "fcm_token": "test_fcm_token_abc123" },
+    "expected_behavior": "Should return HTTP 200. Body must contain 'status' of 'success' and a message about the FCM token being updated."
+  },
+  {
+    "id": "auth_change_password_wrong_current",
+    "method": "POST",
+    "endpoint": "/auth/change-password",
+    "auth_role": "RESIDENT",
+    "payload": {
+      "current_password": "definitely_wrong_password",
+      "new_password": "NewPassword@123"
+    },
+    "expected_behavior": "Should return HTTP 400 because the current password is incorrect. Body must mention that the current password is wrong or authentication failed."
+  },
+  {
+    "id": "resident_profile_get",
+    "method": "GET",
+    "endpoint": "/resident/profile",
+    "auth_role": "RESIDENT",
+    "expected_behavior": "Should return HTTP 200. Body must contain a valid resident profile with fields: id, name, email, room_number, site_id, balance, status, allowed_meals, and dietary_preference."
+  },
+  {
+    "id": "resident_profile_patch",
+    "method": "PATCH",
+    "endpoint": "/resident/profile",
+    "auth_role": "RESIDENT",
+    "payload": { "name": "Updated Resident Name" },
+    "expected_behavior": "Should return HTTP 200. Body must contain the updated resident profile. The 'name' field should be 'Updated Resident Name'."
+  },
+  {
+    "id": "resident_qr_code",
+    "method": "GET",
+    "endpoint": "/resident/qr-code",
+    "auth_role": "RESIDENT",
+    "expected_behavior": "Should return HTTP 200. Body must contain 'qr_base64' (a non-empty base64 PNG string), 'payload_signature', and 'generated_at'."
+  },
+  {
+    "id": "resident_balance",
+    "method": "GET",
+    "endpoint": "/resident/balance",
+    "auth_role": "RESIDENT",
+    "expected_behavior": "Should return HTTP 200. Body must contain 'balance' (an integer >= 0) and optionally 'plan_id' and 'plan_name' describing the active plan."
+  },
+  {
+    "id": "resident_transactions",
+    "method": "GET",
+    "endpoint": "/resident/transactions",
+    "auth_role": "RESIDENT",
+    "expected_behavior": "Should return HTTP 200. Body must contain a 'transactions' list and 'total' count. Each transaction entry should have at minimum 'timestamp' and 'status'."
+  },
+  {
+    "id": "resident_subscription",
+    "method": "GET",
+    "endpoint": "/resident/subscription",
+    "auth_role": "RESIDENT",
+    "expected_behavior": "Should return HTTP 200. Body must describe the current subscription: plan info, allowed meal types (e.g. BREAKFAST, LUNCH, DINNER), remaining credits, and subscription status."
+  },
+  {
+    "id": "resident_guest_passes",
+    "method": "GET",
+    "endpoint": "/resident/guest-passes",
+    "auth_role": "RESIDENT",
+    "expected_behavior": "Should return HTTP 200. Body must contain a 'guest_passes' list (may be empty). Each entry should have a 'status' (e.g. ACTIVE or USED) and an 'expires_at' or similar timestamp."
+  },
+  {
+    "id": "resident_subscribe_to_plan",
+    "method": "POST",
+    "endpoint": "/resident/subscribe",
+    "auth_role": "RESIDENT",
+    "payload": {
+      "plan_id": "{TEST_PLAN_ID}",
+      "selected_meals": ["LUNCH"]
+    },
+    "expected_behavior": "Should return HTTP 200. Body must describe the subscription details: 'plan_id', 'status', 'allowed_meals', and remaining credits. OR HTTP 400 if the plan requires a payment first."
+  },
+  {
+    "id": "vendor_profile_get",
+    "method": "GET",
+    "endpoint": "/vendor/profile",
+    "auth_role": "VENDOR",
+    "expected_behavior": "Should return HTTP 200. Body must contain the authenticated vendor's profile with fields: id, name, email, and assigned_site_ids."
+  },
+  {
+    "id": "vendor_assigned_sites",
+    "method": "GET",
+    "endpoint": "/vendor/assigned-sites",
+    "auth_role": "VENDOR",
+    "expected_behavior": "Should return HTTP 200. Body must have 'sites' as a list and 'count' as an integer. Each site must have 'id', 'name', and 'meal_windows'."
+  },
+  {
+    "id": "vendor_search_user",
+    "method": "GET",
+    "endpoint": "/vendor/search-user?query=test",
+    "auth_role": "VENDOR",
+    "expected_behavior": "Should return HTTP 200. Body must contain a 'results' list (may be empty) of residents. Each result should have: id, name, room_number."
+  },
+  {
+    "id": "scan_validate_invalid_qr",
+    "method": "POST",
+    "endpoint": "/scan/validate",
+    "auth_role": "VENDOR",
+    "payload": {
+      "qr_payload": "fake_invalid_payload_no_signature",
+      "site_id": "{TEST_SITE_ID}",
+      "vendor_id": "{TEST_VENDOR_ID}"
+    },
+    "expected_behavior": "Should return HTTP 200. The 'status' must be 'BLOCKED' and 'block_reason' must be 'INVALID_QR'."
+  },
+  {
+    "id": "scan_manual",
+    "method": "POST",
+    "endpoint": "/scan/manual",
+    "auth_role": "VENDOR",
+    "payload": {
+      "resident_id": "{TEST_RESIDENT_ID}",
+      "site_id": "{TEST_SITE_ID}",
+      "vendor_id": "{TEST_VENDOR_ID}",
+      "description": "Resident forgot phone - automated test scan"
+    },
+    "expected_behavior": "Should return HTTP 200. Body must contain a 'status' field that is either 'SUCCESS' or 'BLOCKED'. If blocked, 'block_reason' must explain why (e.g. OUTSIDE_MEAL_WINDOW, ZERO_BALANCE, DUPLICATE_SCAN)."
+  },
+  {
+    "id": "sites_list",
+    "method": "GET",
+    "endpoint": "/sites",
+    "auth_role": "VENDOR",
+    "expected_behavior": "Should return HTTP 200. Body must have a 'sites' list and a 'count'. Each site must have 'id', 'name', and 'meal_windows'."
+  },
+  {
+    "id": "sites_get_by_id",
+    "method": "GET",
+    "endpoint": "/sites/{TEST_SITE_ID}",
+    "auth_role": "VENDOR",
+    "expected_behavior": "Should return HTTP 200. Body must contain the site details: 'id', 'name', 'meal_windows', and 'is_active'."
+  },
+  {
+    "id": "sites_get_nonexistent",
+    "method": "GET",
+    "endpoint": "/sites/site_does_not_exist_xyz",
+    "auth_role": "VENDOR",
+    "expected_behavior": "Should return HTTP 404. Body must indicate the site was not found."
+  },
+  {
+    "id": "sites_create",
+    "method": "POST",
+    "endpoint": "/sites",
+    "auth_role": "SUPER_ADMIN",
+    "payload": {
+      "name": "Temp Test Site",
+      "meal_windows": {
+        "BREAKFAST": { "start": "07:00", "end": "09:00" },
+        "LUNCH":     { "start": "12:00", "end": "14:00" },
+        "DINNER":    { "start": "19:00", "end": "21:00" }
+      }
+    },
+    "expected_behavior": "Should return HTTP 201. Body must contain the newly created site with 'id', 'name', 'meal_windows', and 'is_active' set to true."
+  },
+  {
+    "id": "sites_update",
+    "method": "PATCH",
+    "endpoint": "/sites/{TEST_SITE_ID}",
+    "auth_role": "SUPER_ADMIN",
+    "payload": { "name": "Updated Site Name" },
+    "expected_behavior": "Should return HTTP 200. Body must contain the updated site with 'name' reflecting 'Updated Site Name'."
+  },
+  {
+    "id": "plans_list_public",
+    "method": "GET",
+    "endpoint": "/plans",
+    "auth_role": "RESIDENT",
+    "expected_behavior": "Should return HTTP 200. Body must be a list of active plans. Each plan must have 'id', 'name', 'price', 'meals_per_day', 'meal_count', and 'duration_days'."
+  },
+  {
+    "id": "guest_pass_purchase",
+    "method": "POST",
+    "endpoint": "/guest-pass/purchase",
+    "auth_role": "RESIDENT",
+    "payload": { "meal_type": "DINNER" },
+    "expected_behavior": "Should return HTTP 200 with a guest pass object containing 'id', 'expires_at', and 'qr_payload', OR HTTP 402/400 if the resident has insufficient balance for the guest pass."
+  },
+  {
+    "id": "payments_create_order",
+    "method": "POST",
+    "endpoint": "/payments/create-order",
+    "auth_role": "RESIDENT",
+    "payload": {
+      "plan_id": "{TEST_PLAN_ID}",
+      "type": "PLAN"
+    },
+    "expected_behavior": "Should return HTTP 200. Body must contain Razorpay order details: 'order_id', 'amount' (in paise, INR * 100), and 'currency'."
+  },
+  {
+    "id": "admin_list_residents",
+    "method": "GET",
+    "endpoint": "/admin/residents",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must contain 'residents' list and 'total' count. Each resident should have id, name, email, status, and site_id."
+  },
+  {
+    "id": "admin_list_residents_paginated",
+    "method": "GET",
+    "endpoint": "/admin/residents?page=1&page_size=5",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must contain a 'residents' list with at most 5 entries, plus pagination info like 'total', 'page', 'page_size'."
+  },
+  {
+    "id": "admin_list_residents_filtered",
+    "method": "GET",
+    "endpoint": "/admin/residents?status=ACTIVE",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. All returned residents must have 'status' equal to 'ACTIVE'."
+  },
+  {
+    "id": "admin_get_resident",
+    "method": "GET",
+    "endpoint": "/admin/residents/{TEST_RESIDENT_ID}",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must contain the full resident profile including: id, name, email, phone, room_number, site_id, balance, status, allowed_meals."
+  },
+  {
+    "id": "admin_get_resident_not_found",
+    "method": "GET",
+    "endpoint": "/admin/residents/nonexistent_resident_abc",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 404. Body must indicate that the resident was not found."
+  },
+  {
+    "id": "admin_edit_resident",
+    "method": "PATCH",
+    "endpoint": "/admin/residents/{TEST_RESIDENT_ID}",
+    "auth_role": "SUPER_ADMIN",
+    "payload": { "room_number": "R999" },
+    "expected_behavior": "Should return HTTP 200. Body must contain the updated resident profile with 'room_number' set to 'R999'."
+  },
+  {
+    "id": "admin_resident_transactions",
+    "method": "GET",
+    "endpoint": "/admin/residents/{TEST_RESIDENT_ID}/transactions",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must contain a 'transactions' list and a 'total' count. Each transaction should have at minimum 'timestamp' and 'status'."
+  },
+  {
+    "id": "admin_subscribe_resident",
+    "method": "POST",
+    "endpoint": "/admin/residents/{TEST_RESIDENT_ID}/subscribe",
+    "auth_role": "SUPER_ADMIN",
+    "payload": {
+      "plan_id": "{TEST_PLAN_ID}",
+      "selected_meals": ["LUNCH"]
+    },
+    "expected_behavior": "Should return HTTP 200. Body must describe the subscription details: 'plan_id', 'status', 'allowed_meals', and remaining credits."
+  },
+  {
+    "id": "admin_list_vendors",
+    "method": "GET",
+    "endpoint": "/admin/vendors",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must contain 'vendors' list and 'total' count. Each vendor must have id, name, email, and assigned_site_ids."
+  },
+  {
+    "id": "admin_get_vendor",
+    "method": "GET",
+    "endpoint": "/admin/vendors/{TEST_VENDOR_ID}",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must contain the full vendor profile: id, name, email, assigned_site_ids, status."
+  },
+  {
+    "id": "admin_get_vendor_not_found",
+    "method": "GET",
+    "endpoint": "/admin/vendors/nonexistent_vendor_abc",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 404. Body must indicate that the vendor was not found."
+  },
+  {
+    "id": "admin_update_vendor",
+    "method": "PATCH",
+    "endpoint": "/admin/vendors/{TEST_VENDOR_ID}",
+    "auth_role": "SUPER_ADMIN",
+    "payload": { "phone": "9888888888" },
+    "expected_behavior": "Should return HTTP 200. Body must contain the updated vendor profile with 'phone' set to '9888888888'."
+  },
+  {
+    "id": "admin_site_residents",
+    "method": "GET",
+    "endpoint": "/admin/sites/{TEST_SITE_ID}/residents",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must be a list of resident profiles assigned to the specified site. Each entry should have id, name, email, and room_number."
+  },
+  {
+    "id": "admin_site_live_scans",
+    "method": "GET",
+    "endpoint": "/admin/sites/{TEST_SITE_ID}/live-scans",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must contain 'scans' list, 'count' integer, and 'site_id'. Each scan entry should have scan_id, resident_id, meal_type, status, and timestamp."
+  },
+  {
+    "id": "admin_search",
+    "method": "GET",
+    "endpoint": "/admin/search?q=test",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must contain 'residents', 'vendors', and 'sites' as lists, plus a 'total' count and the original 'query'."
+  },
+  {
+    "id": "admin_search_missing_query",
+    "method": "GET",
+    "endpoint": "/admin/search",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 422 (Unprocessable Entity) because the required 'q' query parameter is missing."
+  },
+  {
+    "id": "admin_credit_override_add",
+    "method": "POST",
+    "endpoint": "/admin/credit-override",
+    "auth_role": "SUPER_ADMIN",
+    "payload": {
+      "resident_id": "{TEST_RESIDENT_ID}",
+      "amount": 5,
+      "reason": "Test credit addition by automated test"
+    },
+    "expected_behavior": "Should return HTTP 200. Body must contain the updated balance after adding 5 credits. Fields 'resident_id', 'new_balance', 'amount', and 'reason' should be present."
+  },
+  {
+    "id": "admin_credit_overrides_log",
+    "method": "GET",
+    "endpoint": "/admin/credit-overrides",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must contain a list of credit override audit log entries. Each entry should have resident_id, amount, reason, admin_id, and timestamp."
+  },
+  {
+    "id": "admin_list_plans",
+    "method": "GET",
+    "endpoint": "/admin/plans",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must be a list of all meal plans including inactive ones. Each plan must have: id, name, price, meals_per_day, meal_count, duration_days, is_active."
+  },
+  {
+    "id": "admin_create_plan",
+    "method": "POST",
+    "endpoint": "/admin/plans",
+    "auth_role": "SUPER_ADMIN",
+    "payload": {
+      "name": "Temporary Test Plan",
+      "meals_per_day": 2,
+      "meal_count": 60,
+      "duration_days": 30,
+      "price": 3500,
+      "description": "Plan created by automated test suite"
+    },
+    "expected_behavior": "Should return HTTP 201. Body must contain the newly created plan with a valid 'id', 'name' as 'Temporary Test Plan', 'meals_per_day' as 2, 'meal_count' as 60, and 'is_active' as true."
+  },
+  {
+    "id": "admin_update_plan",
+    "method": "PATCH",
+    "endpoint": "/admin/plans/{TEST_PLAN_ID}",
+    "auth_role": "SUPER_ADMIN",
+    "payload": { "price": 2500 },
+    "expected_behavior": "Should return HTTP 200. Body must contain the updated plan with 'price' set to 2500."
+  },
+  {
+    "id": "admin_dashboard_stats",
+    "method": "GET",
+    "endpoint": "/admin/dashboard/stats",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must contain: total_residents, active_residents, total_vendors, today_total_scans, today_blocked_scans, and a meal_counts dictionary with BREAKFAST/LUNCH/DINNER keys."
+  },
+  {
+    "id": "admin_dashboard_scan_feed",
+    "method": "GET",
+    "endpoint": "/admin/dashboard/scan-feed",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Body must contain 'feed' (a list of recent scans) and 'count'. Each feed item should have: id, resident_id, site_id, meal_type, status, and timestamp."
+  },
+  {
+    "id": "admin_dashboard_scan_feed_limited",
+    "method": "GET",
+    "endpoint": "/admin/dashboard/scan-feed?limit=5",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. The 'feed' list must contain at most 5 entries. 'count' must equal the number of items in 'feed'."
+  },
+  {
+    "id": "admin_report_weekly",
+    "method": "GET",
+    "endpoint": "/admin/reports/weekly",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. The Content-Type header must be 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' (Excel format). Response body must be a non-empty binary file."
+  },
+  {
+    "id": "admin_report_monthly",
+    "method": "GET",
+    "endpoint": "/admin/reports/monthly",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. The Content-Type header must be 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' (Excel format). Response must be a downloadable Excel file."
+  },
+  {
+    "id": "admin_report_financial",
+    "method": "GET",
+    "endpoint": "/admin/reports/financial",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Content-Type must be 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'. Response body must be non-empty."
+  },
+  {
+    "id": "admin_report_exception",
+    "method": "GET",
+    "endpoint": "/admin/reports/exception",
+    "auth_role": "SUPER_ADMIN",
+    "expected_behavior": "Should return HTTP 200. Content-Type must be 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'. Response body must be non-empty."
+  },
+  {
+    "id": "admin_broadcast_notification",
+    "method": "POST",
+    "endpoint": "/admin/notifications/broadcast",
+    "auth_role": "SUPER_ADMIN",
+    "payload": {
+      "title": "Test Notification",
+      "body": "This is a test broadcast from the automated test suite.",
+      "site_id": "{TEST_SITE_ID}"
+    },
+    "expected_behavior": "Should return HTTP 200. Body must contain a 'status' of 'success' and a message describing how many devices were targeted or that the notification was queued."
+  },
+  {
+    "id": "auth_unauthorized_no_token",
+    "method": "GET",
+    "endpoint": "/admin/dashboard/stats",
+    "expected_behavior": "Should return HTTP 401 or 403 because no Authorization header is provided. Body must indicate the request is unauthorized."
+  },
+  {
+    "id": "auth_forbidden_resident_on_admin",
+    "method": "GET",
+    "endpoint": "/admin/residents",
+    "auth_role": "RESIDENT",
+    "expected_behavior": "Should return HTTP 403 because a RESIDENT role is not permitted to access admin endpoints. Body must indicate access is forbidden."
+  },
+  {
+    "id": "auth_forbidden_vendor_on_admin",
+    "method": "GET",
+    "endpoint": "/admin/residents",
+    "auth_role": "VENDOR",
+    "expected_behavior": "Should return HTTP 403 because a VENDOR role is not permitted to access admin resident management endpoints. Body must indicate access is forbidden."
+  }
+]
