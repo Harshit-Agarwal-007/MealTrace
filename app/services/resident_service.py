@@ -321,7 +321,7 @@ def get_transactions(
 
         transactions.append(TransactionRecord(
             id=doc.id,
-            meal_type=data.get("meal_type", ""),
+            meal_type=data.get("meal_type"),   # may be None for pre-meal-window blocks
             site_id=sid or "",
             site_name=site_name,
             status=data.get("status", ""),

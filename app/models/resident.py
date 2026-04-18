@@ -53,7 +53,7 @@ class SubscriptionInfo(BaseModel):
 class TransactionRecord(BaseModel):
     """Single transaction/scan log entry."""
     id: str
-    meal_type: str  # BREAKFAST, LUNCH, DINNER
+    meal_type: Optional[str] = None  # BREAKFAST, LUNCH, DINNER — null for pre-meal-window blocks
     site_id: str
     site_name: Optional[str] = None
     status: str  # SUCCESS, BLOCKED

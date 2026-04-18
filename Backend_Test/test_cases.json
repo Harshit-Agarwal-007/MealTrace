@@ -280,7 +280,7 @@
     "method": "POST",
     "endpoint": "/guest-pass/purchase",
     "auth_role": "RESIDENT",
-    "payload": { "meal_type": "DINNER" },
+    "payload": { "site_id": "{TEST_SITE_ID}", "meal_type": "DINNER" },
     "expected_behavior": "Should return HTTP 200 with a guest pass object containing 'id', 'expires_at', and 'qr_payload', OR HTTP 402/400 if the resident has insufficient balance for the guest pass."
   },
   {
@@ -517,7 +517,7 @@
     "auth_role": "SUPER_ADMIN",
     "payload": {
       "title": "Test Notification",
-      "body": "This is a test broadcast from the automated test suite.",
+      "message": "This is a test broadcast from the automated test suite.",
       "site_id": "{TEST_SITE_ID}"
     },
     "expected_behavior": "Should return HTTP 200. Body must contain a 'status' of 'success' and a message describing how many devices were targeted or that the notification was queued."

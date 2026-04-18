@@ -57,14 +57,15 @@ def generate_weekly_report(start_date: Optional[datetime] = None) -> bytes:
 
     end_date = start_date + timedelta(days=7)
 
-    # Fetch scan logs for the period
-    logs = (
+    # Fetch all scans in the period (uses default single-field index on 'timestamp')
+    all_logs_raw = (
         db.collection("scan_logs")
-        .where("status", "==", "SUCCESS")
         .where("timestamp", ">=", start_date)
         .where("timestamp", "<=", end_date)
         .get()
     )
+    # Filter for SUCCESS client-side
+    logs = [d for d in all_logs_raw if d.to_dict().get("status") == "SUCCESS"]
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -139,13 +140,15 @@ def generate_monthly_report(year: int = None, month: int = None) -> bytes:
 
     days_in_month = (end_date - start_date).days
 
-    logs = (
+    # Fetch all scans in the period (uses default single-field index on 'timestamp')
+    all_logs_raw = (
         db.collection("scan_logs")
-        .where("status", "==", "SUCCESS")
         .where("timestamp", ">=", start_date)
         .where("timestamp", "<", end_date)
         .get()
     )
+    # Filter for SUCCESS client-side
+    logs = [d for d in all_logs_raw if d.to_dict().get("status") == "SUCCESS"]
 
     # Aggregate by resident
     resident_totals = {}
@@ -239,13 +242,18 @@ def generate_exception_report(
     if end_date is None:
         end_date = datetime.now(timezone.utc)
 
-    logs = (
+    # Fetch all logs in the period (uses default single-field index on 'timestamp')
+    all_logs_raw = (
         db.collection("scan_logs")
-        .where("status", "==", "BLOCKED")
         .where("timestamp", ">=", start_date)
         .where("timestamp", "<=", end_date)
-        .order_by("timestamp", direction="DESCENDING")
         .get()
+    )
+    # Filter for BLOCKED and sort client-side
+    logs = sorted(
+        [d for d in all_logs_raw if d.to_dict().get("status") == "BLOCKED"],
+        key=lambda d: d.to_dict().get("timestamp", datetime.min.replace(tzinfo=timezone.utc)),
+        reverse=True,
     )
 
     wb = openpyxl.Workbook()

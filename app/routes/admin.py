@@ -328,12 +328,17 @@ async def admin_site_live_scans(
     db = get_db()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
 
-    scans = (
+    # Fetch all scans in the time window (uses default single-field index on 'timestamp')
+    scans_raw = (
         db.collection("scan_logs")
-        .where("site_id", "==", site_id)
         .where("timestamp", ">=", cutoff)
-        .order_by("timestamp", direction="DESCENDING")
         .get()
+    )
+    # Filter by site_id and sort client-side
+    scans = sorted(
+        [d for d in scans_raw if d.to_dict().get("site_id") == site_id],
+        key=lambda d: d.to_dict().get("timestamp", datetime.min.replace(tzinfo=timezone.utc)),
+        reverse=True,
     )
 
     results = []
