@@ -48,7 +48,8 @@ async def scan_validate(
     return validate_scan(
         qr_payload=request.qr_payload,
         site_id=request.site_id,
-        vendor_id=request.vendor_id,
+        actor_id=current_user["sub"],
+        actor_role=current_user.get("role", ""),
     )
 
 
@@ -65,6 +66,7 @@ async def scan_manual(
     return manual_scan(
         resident_id=request.resident_id,
         site_id=request.site_id,
-        vendor_id=request.vendor_id,
+        actor_id=current_user["sub"],
+        actor_role=current_user.get("role", ""),
         description=request.description,
     )

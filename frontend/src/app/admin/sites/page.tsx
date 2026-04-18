@@ -3,7 +3,7 @@
 /**
  * Admin Sites List
  *
- * GET /admin/sites
+ * GET /sites
  */
 
 import { useState, useEffect } from "react";
@@ -18,7 +18,7 @@ export default function AdminSites() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<{ sites: Site[] }>("/admin/sites")
+    api.get<{ sites: Site[] }>("/sites")
        .then(res => setSites(res.sites || []))
        .catch(() => {})
        .finally(() => setLoading(false));

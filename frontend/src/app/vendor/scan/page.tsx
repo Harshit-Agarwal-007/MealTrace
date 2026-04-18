@@ -20,11 +20,12 @@
  */
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { CheckCircle2, XCircle, ArrowLeft, Camera, CameraOff, Loader2 } from "lucide-react";
+import { CheckCircle2, XCircle, ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/apiClient";
 import type { ScanValidateResponse } from "@/lib/types";
+import { Html5QrcodeScanner } from "html5-qrcode";
 
 // ── Block reason → human label map ───────────────────────────────────────────
 const BLOCK_LABELS: Record<string, string> = {
@@ -42,42 +43,9 @@ export default function VendorScanner() {
   const { userId } = useAuth();
   const [scanResult, setScanResult] = useState<ScanValidateResponse | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [cameraActive, setCameraActive] = useState(false);
-  const [cameraError, setCameraError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
 
   const siteId = typeof window !== "undefined" ? localStorage.getItem("vendorSiteId") ?? "" : "";
-
-  // ── Camera helpers ───────────────────────────────────────────────────────────
-  const startCamera = useCallback(async () => {
-    setCameraError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" }, // rear camera on mobile
-        audio: false,
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-      }
-      setCameraActive(true);
-    } catch {
-      setCameraError("Camera access denied. Use manual entry or allow camera permission.");
-    }
-  }, []);
-
-  const stopCamera = useCallback(() => {
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    streamRef.current = null;
-    setCameraActive(false);
-  }, []);
-
-  useEffect(() => {
-    startCamera();
-    return () => stopCamera();
-  }, [startCamera, stopCamera]);
 
   // ── Scan validation ──────────────────────────────────────────────────────────
   const validateScan = useCallback(async (qrPayload: string) => {
@@ -108,6 +76,32 @@ export default function VendorScanner() {
       }, 2500);
     }
   }, [scanning, siteId, userId]);
+
+  useEffect(() => {
+    if (!siteId) {
+      return;
+    }
+    const scanner = new Html5QrcodeScanner(
+      "qr-scanner-region",
+      { fps: 10, qrbox: { width: 250, height: 250 } },
+      false
+    );
+    scannerRef.current = scanner;
+    scanner.render(
+      (decodedText) => {
+        void validateScan(decodedText);
+      },
+      () => {
+        // ignore per-frame decode failures
+      }
+    );
+    return () => {
+      if (scannerRef.current) {
+        void scannerRef.current.clear();
+        scannerRef.current = null;
+      }
+    };
+  }, [siteId, validateScan]);
 
   // ── DEV simulate helpers ─────────────────────────────────────────────────────
   const simulateSuccess = () =>
@@ -193,52 +187,25 @@ export default function VendorScanner() {
           <ArrowLeft className="w-5 h-5 text-white" />
         </Link>
         <h2 className="flex-1 text-center font-bold text-xl text-white tracking-wide">Scan QR</h2>
-        {/* Camera toggle */}
-        <button
-          onClick={cameraActive ? stopCamera : startCamera}
-          className="absolute right-4 bg-neutral-800/80 p-3 rounded-full active:scale-95 transition-all backdrop-blur-sm border border-neutral-700"
-        >
-          {cameraActive ? <Camera className="w-5 h-5 text-white" /> : <CameraOff className="w-5 h-5 text-white" />}
-        </button>
       </div>
 
       <div className="flex-1 relative flex flex-col items-center justify-center overflow-hidden">
-        {/* Live camera feed */}
-        {cameraActive && (
-          <video
-            ref={videoRef}
-            className="absolute inset-0 w-full h-full object-cover"
-            playsInline
-            muted
-          />
-        )}
-
-        {/* Fallback background when camera off */}
-        {!cameraActive && (
-          <div className="absolute inset-0 bg-black">
-            <div
-              className="w-full h-full opacity-40 bg-cover bg-center grayscale blur-sm"
-              style={{ backgroundImage: "url('https://images.unsplash.com/photo-1555939594-58d7cb561ad1?q=80&w=1000&auto=format&fit=crop')" }}
-            />
-          </div>
-        )}
+        <div className="absolute inset-0 bg-black" />
 
         {/* Camera error */}
-        {cameraError && (
+        {!siteId && (
           <div className="relative z-20 bg-neutral-900/80 border border-neutral-700 text-neutral-300 text-sm font-medium px-5 py-3 rounded-2xl mb-4 text-center max-w-xs">
-            {cameraError}
+            No site selected. Choose a site first.
           </div>
         )}
 
-        {/* Scanning overlay */}
-        <div className="relative z-10 w-72 h-72 rounded-[40px] flex items-center justify-center mb-10 shadow-[0_0_0_1000px_rgba(0,0,0,0.6)]">
-          <div className="w-12 h-12 border-t-8 border-l-8 border-amber-500 absolute top-0 left-0 rounded-tl-3xl" />
-          <div className="w-12 h-12 border-t-8 border-r-8 border-amber-500 absolute top-0 right-0 rounded-tr-3xl" />
-          <div className="w-12 h-12 border-b-8 border-l-8 border-amber-500 absolute bottom-0 left-0 rounded-bl-3xl" />
-          <div className="w-12 h-12 border-b-8 border-r-8 border-amber-500 absolute bottom-0 right-0 rounded-br-3xl" />
-          <div className="absolute top-0 w-full h-1 bg-amber-500 shadow-[0_0_20px_rgba(245,158,11,1)] animate-[scan_2.5s_ease-in-out_infinite]" />
+        {/* Scanner mount */}
+        <div className="relative z-10 w-full max-w-md px-4">
+          <div id="qr-scanner-region" className="rounded-2xl overflow-hidden" />
           {scanning && (
-            <Loader2 className="w-12 h-12 text-amber-500 animate-spin z-10" />
+            <div className="mt-4 flex justify-center">
+              <Loader2 className="w-8 h-8 text-amber-500 animate-spin z-10" />
+            </div>
           )}
         </div>
 
@@ -262,13 +229,6 @@ export default function VendorScanner() {
           </button>
         </div>
       </div>
-
-      <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes scan {
-          0%, 100% { top: 5%; }
-          50% { top: 95%; }
-        }
-      `}} />
     </div>
   );
 }

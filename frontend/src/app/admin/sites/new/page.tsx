@@ -14,13 +14,13 @@ export default function AdminSiteCreate() {
     if (!name.trim()) return alert("Site name is required");
     setLoading(true);
     try {
-      await api.post("/admin/sites", {
+      await api.post("/sites", {
         name,
         vendor_staff_ids: [],
         meal_windows: {
-          breakfast: { start: "07:30", end: "09:30" },
-          lunch:     { start: "12:30", end: "14:30" },
-          dinner:    { start: "19:30", end: "21:30" },
+          BREAKFAST: { start: "07:30", end: "09:30" },
+          LUNCH:     { start: "12:30", end: "14:30" },
+          DINNER:    { start: "19:30", end: "21:30" },
         }
       });
       router.push("/admin/sites");

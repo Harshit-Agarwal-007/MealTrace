@@ -3,35 +3,43 @@
 /**
  * Guest Pass
  *
- * POST /scan/guest-pass
+ * POST /guest-pass/purchase
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { QrCode, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/apiClient";
 import Image from "next/image";
 
 interface GuestPassResponse {
-  status: string;
-  pass_id: string;
-  qr_code_base64: string;
-  amount_deducted: number;
+  id: string;
+  qr_base64: string;
+  status: "UNUSED" | "USED";
+  expiry_at: string;
 }
 
 export default function GuestPassPage() {
   const [loading, setLoading] = useState(false);
   const [passData, setPassData] = useState<GuestPassResponse | null>(null);
   const [error, setError] = useState("");
+  const [siteId, setSiteId] = useState("");
+
+  useEffect(() => {
+    api.get<{ site_id: string }>("/resident/profile")
+      .then((profile) => setSiteId(profile.site_id))
+      .catch(() => setError("Unable to load resident site for guest pass."));
+  }, []);
 
   const handleGenerate = async () => {
     setLoading(true);
     setError("");
     try {
-      const res = await api.post<GuestPassResponse>("/scan/guest-pass", { meal_type: "GUEST" });
+      if (!siteId) throw new Error("Missing site assignment");
+      const res = await api.post<GuestPassResponse>("/guest-pass/purchase", { site_id: siteId });
       setPassData(res);
-    } catch (err: any) {
-      setError(err.message || "Failed to generate guest pass");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to generate guest pass");
     } finally {
       setLoading(false);
     }
@@ -58,8 +66,8 @@ export default function GuestPassPage() {
           
           <button 
              onClick={handleGenerate}
-             disabled={loading}
              className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-md shadow-indigo-200"
+             disabled={loading || !siteId}
           >
              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Generate Pass — ₹100"}
           </button>
@@ -72,19 +80,19 @@ export default function GuestPassPage() {
              </div>
           </div>
           <h2 className="text-xl font-black text-slate-900 mb-1">Pass Generated!</h2>
-          <p className="text-sm text-slate-500 mb-8 font-medium">Valid for next 15 minutes</p>
+          <p className="text-sm text-slate-500 mb-8 font-medium">Valid for 24 hours from issue</p>
           
           <div className="bg-white border-4 border-indigo-50 rounded-2xl p-4 inline-block shadow-inner mb-6 relative w-48 h-48">
              <Image 
                fill
-               src={`data:image/png;base64,${passData.qr_code_base64}`} 
+              src={`data:image/png;base64,${passData.qr_base64}`} 
                alt="Guest Pass QR" 
                className="object-contain"
                unoptimized
              />
           </div>
           
-          <p className="text-indigo-600 font-bold bg-indigo-50 py-2 rounded-xl">ID: {passData.pass_id}</p>
+          <p className="text-indigo-600 font-bold bg-indigo-50 py-2 rounded-xl">ID: {passData.id}</p>
         </div>
       )}
     </div>

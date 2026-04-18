@@ -161,7 +161,7 @@ export default function ResidentDashboard() {
           <Skeleton className="h-6 w-44 rounded-full" />
         ) : (
           <p className="text-indigo-700 text-xs font-bold bg-indigo-50/80 backdrop-blur-sm w-max px-4 py-1.5 rounded-full mt-2 border border-indigo-100/50">
-            {balance?.plan_name ?? "No active plan"}
+            {balance?.active_plan ?? "No active plan"}
             {expiryLabel ? ` • ${expiryLabel}` : ""}
           </p>
         )}

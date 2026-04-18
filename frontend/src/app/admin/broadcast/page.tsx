@@ -3,7 +3,7 @@
 /**
  * Admin Broadcast
  *
- * POST /admin/broadcast
+ * POST /admin/notifications/broadcast
  */
 
 import { useState } from "react";
@@ -12,7 +12,6 @@ import Link from "next/link";
 import { api } from "@/lib/apiClient";
 
 export default function BroadcastPage() {
-  const [target, setTarget] = useState("ALL");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   
@@ -25,8 +24,7 @@ export default function BroadcastPage() {
     
     setStatus("SENDING");
     try {
-      await api.post("/admin/broadcast", {
-        target_role: target === "ALL" ? null : target,
+      await api.post("/admin/notifications/broadcast", {
         title: title.trim(),
         message: body.trim()
       });
@@ -36,9 +34,9 @@ export default function BroadcastPage() {
       setBody("");
       
       setTimeout(() => setStatus("IDLE"), 4000);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setStatus("ERROR");
-      setMsg(err.message || "Failed to send broadcast");
+      setMsg(err instanceof Error ? err.message : "Failed to send broadcast");
     }
   };
 
@@ -53,19 +51,6 @@ export default function BroadcastPage() {
 
       <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100">
         <form onSubmit={handleSend} className="space-y-4">
-           <div>
-              <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Target Audience</label>
-              <select 
-                value={target} 
-                onChange={(e) => setTarget(e.target.value)} 
-                className="w-full bg-slate-50 border border-slate-200 py-3 px-4 rounded-xl font-bold focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-              >
-                  <option value="ALL">Everyone Active</option>
-                  <option value="RESIDENT">All Residents</option>
-                  <option value="VENDOR">All Vendors</option>
-              </select>
-           </div>
-           
            <div>
               <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Title (Short)</label>
               <input 

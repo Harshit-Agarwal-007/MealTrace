@@ -17,8 +17,8 @@ export default function AdminPlans() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get<{ plans: PlanInfo[] }>("/admin/plans")
-       .then(res => setPlans(res.plans || []))
+    api.get<PlanInfo[]>("/admin/plans")
+       .then((res) => setPlans(res || []))
        .catch(() => {})
        .finally(() => setLoading(false));
   }, []);

@@ -4,7 +4,7 @@
  * Plans Page
  *
  * GET /plans (active plans)
- * POST /payment/plans/{id}/checkout (create razorpay order)
+ * POST /payments/create-order (create razorpay order)
  *
  * Mocking the actual Razorpay widget window.Razorpay for now,
  * but the backend flow is fully real.
@@ -35,18 +35,21 @@ export default function PlansPage() {
     if (!selectedPlanId) return;
     setProcessing(true);
     try {
-      const order = await api.post<CreateOrderResponse>(`/payment/plans/${selectedPlanId}/checkout`);
+      const order = await api.post<CreateOrderResponse>("/payments/create-order", {
+        plan_id: selectedPlanId,
+        guest_pass: false,
+      });
       
       // Simulate Razorpay window (for demo purposes)
       // In production, load https://checkout.razorpay.com/v1/checkout.js and new window.Razorpay(...)
       
       // We will pretend Payment succeeded and call backend success endpoint
       // Note: Actually, in Razorpay webhooks handle the success. For PWA demo we assume success via UI trigger or we wait.
-      alert(`Razorpay order created! ID: ${order.order_id}\nAmount: ${order.amount / 100} INR`);
+      alert(`Order created. ID: ${order.order_id}\nAmount: ₹${order.amount / 100}`);
       router.push("/resident");
 
-    } catch (err: any) {
-      alert(err.message || "Failed to create order");
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to create order");
     } finally {
       setProcessing(false);
     }

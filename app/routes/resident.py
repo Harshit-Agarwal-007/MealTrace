@@ -116,11 +116,10 @@ async def resident_subscribe(
 
     The number of selected meals must match the plan's meals_per_day.
     """
-    user_id = current_user["sub"]
-    try:
-        return subscribe_to_plan(user_id, request.plan_id, request.selected_meals)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    raise HTTPException(
+        status_code=403,
+        detail="Direct resident subscription is disabled. Please complete payment checkout.",
+    )
 
 
 @router.patch("/profile", response_model=ResidentProfile)

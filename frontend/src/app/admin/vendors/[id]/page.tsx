@@ -23,6 +23,7 @@ export default function AdminVendorDetail({ params }: { params: Promise<{id: str
   const [error, setError] = useState<string | null>(null);
   const [showRevokeModal, setShowRevokeModal] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [resettingCreds, setResettingCreds] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
@@ -32,8 +33,8 @@ export default function AdminVendorDetail({ params }: { params: Promise<{id: str
       ]);
       setVendor(vendorData);
       setSites(sitesData.sites || []);
-    } catch (err: any) {
-      setError(err.message || "Failed to load vendor data");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load vendor data");
     } finally {
       setLoading(false);
     }
@@ -58,8 +59,8 @@ export default function AdminVendorDetail({ params }: { params: Promise<{id: str
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
-    } catch (err: any) {
-      setError(err.message || "Failed to update vendor settings");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update vendor settings");
     } finally {
       setSaving(false);
     }
@@ -72,14 +73,29 @@ export default function AdminVendorDetail({ params }: { params: Promise<{id: str
       await api.delete(`/admin/vendors/${id}`);
       setShowRevokeModal(false);
       router.push("/admin/vendors");
-    } catch (err: any) {
-      setError(err.message || "Failed to revoke vendor access");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to revoke vendor access");
     } finally {
       setRevoking(false);
     }
   };
 
-  const updateVendor = (field: keyof VendorProfile, val: any) => {
+  const handleCredentialReset = async () => {
+    if (!vendor?.email) return;
+    setResettingCreds(true);
+    setError(null);
+    try {
+      await api.post("/auth/forgot-password", { email: vendor.email });
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to trigger credential reset");
+    } finally {
+      setResettingCreds(false);
+    }
+  };
+
+  const updateVendor = (field: keyof VendorProfile, val: VendorProfile[keyof VendorProfile]) => {
     if (vendor) setVendor({ ...vendor, [field]: val });
   };
 
@@ -248,15 +264,22 @@ export default function AdminVendorDetail({ params }: { params: Promise<{id: str
       </div>
 
       {/* Security Actions */}
-      <div className="bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm flex justify-between items-center cursor-pointer hover:bg-slate-50 transition-colors group">
+      <button
+         onClick={handleCredentialReset}
+         disabled={resettingCreds}
+         className="w-full bg-white p-6 rounded-[24px] border border-slate-200 shadow-sm flex justify-between items-center hover:bg-slate-50 transition-colors group disabled:opacity-60"
+      >
          <div className="flex items-center gap-4">
             <div className="p-4 bg-blue-50 text-blue-600 rounded-2xl group-hover:scale-110 transition-transform"><KeyRound className="w-6 h-6" /></div>
             <div>
                <h3 className="font-black text-slate-900 group-hover:text-blue-600 transition-colors">Credential Reset</h3>
-               <p className="text-slate-500 text-xs font-medium mt-0.5">Regenerate vendor login credentials</p>
+               <p className="text-slate-500 text-xs font-medium mt-0.5">
+                 {resettingCreds ? "Sending reset email..." : "Send password reset link to vendor email"}
+               </p>
             </div>
          </div>
-      </div>
+         {resettingCreds && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+      </button>
 
       {/* Danger Zone */}
       {vendor.status === 'ACTIVE' && (

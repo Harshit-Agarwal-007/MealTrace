@@ -2,24 +2,44 @@
 import { ArrowLeft, UploadCloud, FileSpreadsheet, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
+import { api } from "@/lib/apiClient";
 
 export default function AdminResidentImport() {
   const [dragActive, setDragActive] = useState(false);
-  const [file, setFile] = useState<null | any>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
 
-  const handleDrag = (e: any) => {
+  const handleDrag = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     if (e.type === "dragenter" || e.type === "dragover") setDragActive(true);
     else if (e.type === "dragleave") setDragActive(false);
   };
 
-  const handleDrop = (e: any) => {
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
     e.preventDefault();
     e.stopPropagation();
     setDragActive(false);
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       setFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleProcessCsv = async () => {
+    if (!file) return;
+    setProcessing(true);
+    setMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await api.post<{ message?: string }>("/admin/residents/bulk", formData);
+      setMessage(res.message ?? "CSV import completed.");
+      setFile(null);
+    } catch (err: unknown) {
+      setMessage(err instanceof Error ? err.message : "CSV import failed.");
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -30,14 +50,23 @@ export default function AdminResidentImport() {
             <ArrowLeft className="w-4 h-4 mr-1" /> Residents
          </Link>
          {file && (
-            <button className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold active:scale-95 transition-transform shadow-md shadow-blue-500/20">
-               Process CSV
+            <button
+              onClick={handleProcessCsv}
+              disabled={processing}
+              className="bg-blue-600 text-white px-4 py-2 rounded-xl text-sm font-bold active:scale-95 transition-transform shadow-md shadow-blue-500/20 disabled:opacity-60"
+            >
+               {processing ? "Processing..." : "Process CSV"}
             </button>
          )}
       </div>
 
       <h1 className="text-2xl font-bold text-slate-900">Bulk Import</h1>
       <p className="text-slate-500 text-sm">Upload a CSV file containing resident data to bulk provision accounts.</p>
+      {message && (
+        <div className="bg-blue-50 text-blue-700 border border-blue-100 rounded-xl p-3 text-sm font-semibold">
+          {message}
+        </div>
+      )}
 
       {/* Drag & Drop Zone */}
       <div 

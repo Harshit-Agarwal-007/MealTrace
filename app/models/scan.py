@@ -31,14 +31,14 @@ class ScanValidateRequest(BaseModel):
     """Vendor submits a scanned QR payload for validation."""
     qr_payload: str     # The signed QR payload string from the resident's QR code
     site_id: str        # The vendor's currently selected site
-    vendor_id: str      # The vendor performing the scan
+    vendor_id: Optional[str] = None  # Deprecated: derived from JWT on server
 
 
 class ManualScanRequest(BaseModel):
     """Vendor manually logs a meal without a QR code."""
     resident_id: str
     site_id: str
-    vendor_id: str
+    vendor_id: Optional[str] = None  # Deprecated: derived from JWT on server
     description: Optional[str] = None  # Reason for manual scan (e.g., "Forgot phone")
 
 

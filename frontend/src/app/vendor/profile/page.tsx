@@ -1,32 +1,55 @@
 "use client";
 import { useAuth } from "@/context/AuthContext";
-import { UserCircle, LogOut, Save, Mail, User, Key } from "lucide-react";
+import { UserCircle, LogOut, Mail, User, Key, Loader2, RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { api } from "@/lib/apiClient";
+import type { VendorProfile, SiteInfo } from "@/lib/types";
 
 export default function VendorProfile() {
   const { logout } = useAuth();
-  const [toast, setToast] = useState(false);
+  const [vendor, setVendor] = useState<VendorProfile | null>(null);
+  const [sites, setSites] = useState<SiteInfo[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSave = (e: any) => {
-    e.preventDefault();
-    setToast(true);
-    setTimeout(() => setToast(false), 3000);
+  const primarySite = useMemo(() => {
+    if (!vendor?.assigned_site_ids?.length) return null;
+    const match = sites.find((s) => s.id === vendor.assigned_site_ids[0]);
+    return match?.name ?? vendor.assigned_site_ids[0];
+  }, [vendor, sites]);
+
+  const fetchProfile = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [vendorData, assigned] = await Promise.all([
+        api.get<VendorProfile>("/vendor/profile"),
+        api.get<{ sites: SiteInfo[] }>("/vendor/assigned-sites"),
+      ]);
+      setVendor(vendorData);
+      setSites(assigned.sites ?? []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load vendor profile");
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    void fetchProfile();
+  }, []);
 
   return (
     <div className="p-6 pt-12 animate-in fade-in duration-500 h-[100dvh] overflow-y-auto pb-32 relative text-white">
-      {/* Toast Notification */}
-      {toast && (
-        <div className="fixed top-8 left-1/2 -translate-x-1/2 bg-amber-500 text-neutral-950 px-6 py-3 rounded-full shadow-2xl z-50 flex items-center gap-2 animate-in slide-in-from-top-10 fade-in zoom-in duration-300">
-           ✅ <span className="font-bold text-sm">Vendor Profile Saved</span>
-        </div>
-      )}
-
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">Device Profile</h1>
-        <button onClick={handleSave} className="bg-amber-500 text-neutral-950 px-5 py-2.5 rounded-xl text-sm font-black flex items-center gap-2 active:scale-95 transition-transform shadow-lg shadow-amber-500/20">
-          <Save className="w-4 h-4" /> Save
+        <button
+          onClick={() => void fetchProfile()}
+          className="bg-amber-500 text-neutral-950 px-5 py-2.5 rounded-xl text-sm font-black flex items-center gap-2 active:scale-95 transition-transform shadow-lg shadow-amber-500/20"
+          disabled={loading}
+        >
+          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Refresh
         </button>
       </div>
       
@@ -36,7 +59,13 @@ export default function VendorProfile() {
          </div>
       </div>
 
-      <form onSubmit={handleSave} className="space-y-6">
+      {error && (
+        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 mb-6 text-red-300 text-sm font-semibold">
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-6">
          {/* Edit Details */}
          <div className="bg-neutral-800/50 p-5 rounded-[24px] border border-neutral-700/50 shadow-sm space-y-4 relative">
             <h2 className="text-sm font-bold text-neutral-300 mb-2">Device Details</h2>
@@ -45,7 +74,12 @@ export default function VendorProfile() {
                <label className="text-xs text-neutral-500 font-bold tracking-wider uppercase mb-1.5 block">Kiosk Name</label>
                <div className="relative">
                  <User className="w-4 h-4 text-neutral-500 absolute left-3 top-3.5" />
-                 <input type="text" defaultValue="Vendor Kiosk 1" className="w-full pl-9 pr-3 py-3 bg-neutral-900 border border-neutral-700 rounded-xl focus:border-amber-500 focus:outline-none text-white font-medium" />
+                 <input
+                   type="text"
+                   value={vendor?.name ?? ""}
+                   readOnly
+                   className="w-full pl-9 pr-3 py-3 bg-neutral-900 border border-neutral-700 rounded-xl text-white font-medium"
+                 />
                </div>
             </div>
 
@@ -53,7 +87,12 @@ export default function VendorProfile() {
                <label className="text-xs text-neutral-500 font-bold tracking-wider uppercase mb-1.5 block">Contact Email</label>
                <div className="relative">
                  <Mail className="w-4 h-4 text-neutral-500 absolute left-3 top-3.5" />
-                 <input type="email" defaultValue="vendor1@mealtrace.com" className="w-full pl-9 pr-3 py-3 bg-neutral-900 border border-neutral-700 rounded-xl focus:border-amber-500 focus:outline-none text-white font-medium" />
+                 <input
+                   type="email"
+                   value={vendor?.email ?? ""}
+                   readOnly
+                   className="w-full pl-9 pr-3 py-3 bg-neutral-900 border border-neutral-700 rounded-xl text-white font-medium"
+                 />
                </div>
             </div>
          </div>
@@ -62,7 +101,9 @@ export default function VendorProfile() {
          <div className="space-y-3">
              <div className="bg-neutral-800/50 p-5 rounded-2xl border border-neutral-700/50 flex justify-between items-center">
                 <span className="font-semibold text-neutral-300">Default Site</span>
-                <span className="text-amber-500 font-bold uppercase text-[10px] bg-neutral-900 px-3 py-1.5 rounded-full border border-neutral-700 tracking-wider">Main Cafeteria</span>
+                <span className="text-amber-500 font-bold uppercase text-[10px] bg-neutral-900 px-3 py-1.5 rounded-full border border-neutral-700 tracking-wider">
+                  {primarySite ?? "Unassigned"}
+                </span>
              </div>
 
              <Link href="/forgot-password" className="w-full bg-neutral-800/50 p-5 rounded-2xl border border-neutral-700/50 flex justify-between items-center hover:bg-neutral-700/50 transition-colors block">
@@ -79,7 +120,7 @@ export default function VendorProfile() {
                 </div>
              </button>
          </div>
-      </form>
+      </div>
     </div>
   )
 }

@@ -38,20 +38,22 @@ export interface ResidentProfile {
 }
 
 export interface ResidentBalance {
+  resident_id?: string;
   balance: number;
-  plan_name?: string;
+  active_plan?: string;
   plan_expiry?: string;
-  allowed_meals?: string[];
 }
 
 export interface SubscriptionInfo {
+  resident_id?: string;
   plan_id?: string;
   plan_name?: string;
   meals_per_day?: number;
   allowed_meals?: string[];
   balance: number;
-  is_active: boolean;
-  expiry_date?: string;
+  status?: "NONE" | "ACTIVE" | "EXPIRED";
+  plan_started_at?: string;
+  plan_expiry?: string;
 }
 
 export interface Transaction {
@@ -73,9 +75,10 @@ export interface TransactionListResponse {
 }
 
 export interface QRCodeResponse {
+  resident_id?: string;
   qr_base64: string;
-  payload?: string;
-  generated_at?: string;
+  payload_signature?: string;
+  generated_at: string;
 }
 
 export interface GuestPassInfo {
@@ -83,8 +86,10 @@ export interface GuestPassInfo {
   site_id: string;
   meal_type: string;
   qr_base64?: string;
-  status: "ACTIVE" | "USED" | "EXPIRED";
+  status: "UNUSED" | "USED";
   created_at: string;
+  expiry_at?: string;
+  used_at?: string;
 }
 
 // ── Vendor ───────────────────────────────────────────────────────────────────
@@ -144,7 +149,8 @@ export interface CreateOrderResponse {
   order_id: string;
   amount: number;
   currency: string;
-  key: string;
+  razorpay_key_id: string;
+  resident_id: string;
 }
 
 // ── Admin Dashboard ───────────────────────────────────────────────────────────

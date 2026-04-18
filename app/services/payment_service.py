@@ -68,13 +68,15 @@ def create_payment_order(
         notes=notes,
     )
 
+    expected_amount_paise = order["amount"]
     # Store pending payment record
     db.collection("payments").add({
         "resident_id": resident_id,
         "plan_id": plan_id,
         "razorpay_order_id": order["id"],
         "razorpay_payment_id": None,
-        "amount": amount_inr,
+        "amount": expected_amount_paise,
+        "currency": order["currency"],
         "status": "PENDING",
         "type": "guest_pass" if guest_pass else "plan_purchase",
         "timestamp": datetime.now(timezone.utc),
@@ -117,11 +119,9 @@ def process_webhook(payload_body: bytes, signature: str, event_data: dict) -> bo
 
     db = get_db()
 
-    # Find the pending payment
     payment_query = (
         db.collection("payments")
         .where("razorpay_order_id", "==", order_id)
-        .where("status", "==", "PENDING")
         .limit(1)
         .get()
     )
@@ -132,13 +132,41 @@ def process_webhook(payload_body: bytes, signature: str, event_data: dict) -> bo
         break
 
     if not payment_doc:
-        logger.error(f"No pending payment found for order {order_id}")
+        logger.error(f"No payment record found for order {order_id}")
         return False
 
     payment_data = payment_doc.to_dict()
+    if payment_data.get("status") == "SUCCESS":
+        logger.info(f"Duplicate webhook delivery ignored for order {order_id}")
+        return True
+    if payment_data.get("status") == "FAILED":
+        logger.warning(f"Webhook received for failed order {order_id}")
+        return False
+
     resident_id = payment_data["resident_id"]
     plan_id = payment_data.get("plan_id")
     payment_type = payment_data.get("type", "plan_purchase")
+    expected_amount = payment_data.get("amount")
+    expected_currency = payment_data.get("currency", "INR")
+    captured_amount = payment_entity.get("amount")
+    captured_currency = payment_entity.get("currency", "INR")
+
+    if expected_amount is not None and captured_amount != expected_amount:
+        logger.error(f"Amount mismatch for order {order_id}: expected={expected_amount}, actual={captured_amount}")
+        db.collection("payments").document(payment_doc.id).update({
+            "status": "FAILED",
+            "error": "amount_mismatch",
+            "failed_at": datetime.now(timezone.utc),
+        })
+        return False
+    if captured_currency != expected_currency:
+        logger.error(f"Currency mismatch for order {order_id}: expected={expected_currency}, actual={captured_currency}")
+        db.collection("payments").document(payment_doc.id).update({
+            "status": "FAILED",
+            "error": "currency_mismatch",
+            "failed_at": datetime.now(timezone.utc),
+        })
+        return False
 
     # ── Atomic credit top-up via Firestore transaction ──
     from google.cloud.firestore_v1 import transaction as firestore_transaction

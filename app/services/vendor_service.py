@@ -278,9 +278,15 @@ def vendor_search_residents(vendor_id: str, query: str) -> list:
     """
     db = get_db()
     
-    # In a real heavy-load scenario, we'd use Algolia or Typesense.
-    # Since Firestore lacks substring search, we do a client-side filter of ACTIVE users.
-    # For a PG, a few hundred users is fast enough to filter client-side.
+    vendor_doc = db.collection("admin_users").document(vendor_id).get()
+    if not vendor_doc.exists:
+        return []
+    assigned_site_ids = vendor_doc.to_dict().get("assigned_site_ids", [])
+    if not assigned_site_ids:
+        return []
+
+    # Firestore lacks OR/substring search; do client-side text filter
+    # on active residents scoped to vendor-assigned sites.
     docs = db.collection("residents").where("status", "==", "ACTIVE").get()
     
     q_lower = query.lower()
@@ -292,12 +298,17 @@ def vendor_search_residents(vendor_id: str, query: str) -> list:
         r = data.get("room_number", "").lower()
         p = data.get("phone", "")
         
+        if data.get("site_id") not in assigned_site_ids:
+            continue
+
         if q_lower in n or q_lower in r or q_lower in p:
             results.append({
                 "id": doc.id,
                 "name": data.get("name"),
                 "room_number": data.get("room_number"),
                 "dietary_preference": data.get("dietary_preference", "VEG"),
+                "site_id": data.get("site_id"),
+                "plan_name": data.get("plan_name"),
             })
             
     # Return at most 10 results

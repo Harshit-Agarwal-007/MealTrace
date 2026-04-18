@@ -20,7 +20,7 @@ export default function AdminResidentCreate() {
   });
 
   useEffect(() => {
-    api.get<{sites: any[]}>("/admin/sites")
+    api.get<{sites: any[]}>("/sites")
        .then(res => {
          setSites(res.sites || []);
          if (res.sites?.length > 0) {

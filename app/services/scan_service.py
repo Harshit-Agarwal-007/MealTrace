@@ -110,7 +110,21 @@ def _check_active_guest_pass(db, resident_id: str, site_id: str, meal_type: str)
     return None
 
 
-def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidateResponse:
+def _is_vendor_assigned_to_site(db, vendor_id: str, site_id: str) -> bool:
+    vendor_doc = db.collection("admin_users").document(vendor_id).get()
+    if not vendor_doc.exists:
+        return False
+    data = vendor_doc.to_dict()
+    if data.get("role") != "VENDOR" or data.get("status", "ACTIVE") != "ACTIVE":
+        return False
+    return site_id in data.get("assigned_site_ids", [])
+
+
+def _scan_day_key(dt: datetime) -> str:
+    return dt.astimezone(IST).strftime("%Y-%m-%d")
+
+
+def validate_scan(qr_payload: str, site_id: str, actor_id: str, actor_role: str) -> ScanValidateResponse:
     """
     Core scan validation — runs all 7 hard-block checks and atomically
     deducts 1 credit on success (or consumes a guest pass).
@@ -119,6 +133,15 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
     """
     now = datetime.now(timezone.utc)
     db = get_db()
+    vendor_id = actor_id
+
+    if actor_role == "VENDOR" and not _is_vendor_assigned_to_site(db, actor_id, site_id):
+        _log_scan(db, None, site_id, actor_id, None, ScanStatus.BLOCKED, BlockReason.WRONG_SITE, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            block_reason=BlockReason.WRONG_SITE.value,
+            timestamp=now,
+        )
 
     # ── Block 1: INVALID_QR ──
     qr_data = verify_qr_payload(qr_payload)
@@ -265,9 +288,21 @@ def validate_scan(qr_payload: str, site_id: str, vendor_id: str) -> ScanValidate
         )
 
     # ── ALL CHECKS PASSED — Atomic credit deduction ──
-    new_balance = _atomic_deduct_and_log(
-        db, resident_ref, resident_id, site_id, vendor_id, meal_type, current_balance, now
-    )
+    try:
+        new_balance = _atomic_deduct_and_log(
+            db, resident_ref, resident_id, site_id, vendor_id, meal_type, current_balance, now
+        )
+    except ValueError:
+        _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.DUPLICATE_SCAN, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_name=resident_name,
+            resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
+            meal_type=meal_type,
+            block_reason=BlockReason.DUPLICATE_SCAN.value,
+            timestamp=now,
+        )
 
     # ── Send FCM notifications (async-safe, non-blocking) ──
     try:
@@ -302,26 +337,40 @@ def _consume_guest_pass(
     """
     pass_id = guest_pass["id"]
 
-    # Mark pass as USED
-    db.collection("guest_passes").document(pass_id).update({
-        "status": "USED",
-        "used_at": now,
-        "used_meal_type": meal_type,
-        "vendor_id": vendor_id,
-    })
+    @firestore_transaction.transactional
+    def txn_consume(transaction):
+        pass_ref = db.collection("guest_passes").document(pass_id)
+        pass_snap = pass_ref.get(transaction=transaction)
+        if not pass_snap.exists:
+            raise ValueError("Guest pass not found")
 
-    # Log scan
-    db.collection("scan_logs").add({
-        "resident_id": resident_id,
-        "site_id": site_id,
-        "vendor_id": vendor_id,
-        "meal_type": meal_type,
-        "status": ScanStatus.SUCCESS.value,
-        "block_reason": None,
-        "is_guest_pass": True,
-        "guest_pass_id": pass_id,
-        "timestamp": now,
-    })
+        pass_data = pass_snap.to_dict()
+        if pass_data.get("status") != "UNUSED":
+            raise ValueError("Guest pass already used")
+        if pass_data.get("expiry_at") and pass_data.get("expiry_at") <= now:
+            raise ValueError("Guest pass expired")
+
+        transaction.update(pass_ref, {
+            "status": "USED",
+            "used_at": now,
+            "used_meal_type": meal_type,
+            "vendor_id": vendor_id,
+        })
+
+        log_ref = db.collection("scan_logs").document()
+        transaction.set(log_ref, {
+            "resident_id": resident_id,
+            "site_id": site_id,
+            "vendor_id": vendor_id,
+            "meal_type": meal_type,
+            "status": ScanStatus.SUCCESS.value,
+            "block_reason": None,
+            "is_guest_pass": True,
+            "guest_pass_id": pass_id,
+            "timestamp": now,
+        })
+
+    txn_consume(db.transaction())
 
     # Get current balance for display
     resident_doc = db.collection("residents").document(resident_id).get()
@@ -340,13 +389,29 @@ def _consume_guest_pass(
         timestamp=now,
     )
 
-def manual_scan(resident_id: str, site_id: str, vendor_id: str, description: Optional[str] = None) -> ScanValidateResponse:
+def manual_scan(
+    resident_id: str,
+    site_id: str,
+    actor_id: str,
+    actor_role: str,
+    description: Optional[str] = None,
+) -> ScanValidateResponse:
     """
     Manually log a meal for a resident without a physical QR code.
     Useful when the resident forgets their phone or QR mechanism fails.
     """
     now = datetime.now(timezone.utc)
     db = get_db()
+    vendor_id = actor_id
+
+    if actor_role == "VENDOR" and not _is_vendor_assigned_to_site(db, actor_id, site_id):
+        _log_scan(db, resident_id, site_id, actor_id, None, ScanStatus.BLOCKED, BlockReason.WRONG_SITE, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_id=resident_id,
+            block_reason=BlockReason.WRONG_SITE.value,
+            timestamp=now,
+        )
     
     # ── Fetch resident doc ──
     resident_ref = db.collection("residents").document(resident_id)
@@ -467,9 +532,21 @@ def manual_scan(resident_id: str, site_id: str, vendor_id: str, description: Opt
         )
 
     # ── ALL CHECKS PASSED — Atomic credit deduction ──
-    new_balance = _atomic_deduct_and_log(
-        db, resident_ref, resident_id, site_id, vendor_id, meal_type, current_balance, now, is_manual=True, description=description
-    )
+    try:
+        new_balance = _atomic_deduct_and_log(
+            db, resident_ref, resident_id, site_id, vendor_id, meal_type, current_balance, now, is_manual=True, description=description
+        )
+    except ValueError:
+        _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.DUPLICATE_SCAN, now)
+        return ScanValidateResponse(
+            status=ScanStatus.BLOCKED,
+            resident_name=resident_name,
+            resident_id=resident_id,
+            dietary_preference=resident.get("dietary_preference", "VEG"),
+            meal_type=meal_type,
+            block_reason=BlockReason.DUPLICATE_SCAN.value,
+            timestamp=now,
+        )
 
     try:
         send_notification(
@@ -506,6 +583,13 @@ def _atomic_deduct_and_log(
 
     @firestore_transaction.transactional
     def txn_deduct(transaction, res_ref):
+        dedupe_ref = db.collection("scan_dedup").document(
+            f"{resident_id}:{_scan_day_key(timestamp)}:{meal_type}"
+        )
+        dedupe_snap = dedupe_ref.get(transaction=transaction)
+        if dedupe_snap.exists:
+            raise ValueError("Duplicate scan detected")
+
         snapshot = res_ref.get(transaction=transaction)
         balance = snapshot.get("balance") or 0
 
@@ -532,6 +616,13 @@ def _atomic_deduct_and_log(
             log_data["description"] = description
         
         transaction.set(log_ref, log_data)
+        transaction.set(dedupe_ref, {
+            "resident_id": resident_id,
+            "meal_type": meal_type,
+            "day_key": _scan_day_key(timestamp),
+            "site_id": site_id,
+            "created_at": timestamp,
+        })
 
         return new_balance
 
