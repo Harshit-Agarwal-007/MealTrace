@@ -1,26 +1,28 @@
 """
-MealTrace — LLM-Powered API Test Runner
-========================================
+MealTrace — API Test Runner
+============================
 Loads all test cases from test_cases.json, resolves dynamic ID placeholders
 ({TEST_RESIDENT_ID}, {TEST_VENDOR_ID}, {TEST_ADMIN_ID}, {TEST_SITE_ID},
 {TEST_PLAN_ID}) against the IDs captured by the conftest.py session fixture,
-and evaluates each API response via Gemini.
+and evaluates each API response using fast deterministic rules.
+
+No LLM / no external quota — runs in ~30 seconds.
 
 Run:
     pytest test_api_endpoints.py -v -s
 """
 
 import os
+import re
 import json
 import copy
 import pytest
 import requests
 from dotenv import load_dotenv
-from llm_evaluator import evaluate_api_response
 
 load_dotenv()
 
-BASE_URL = os.getenv("BASE_URL", "http://localhost:8000")
+BASE_URL          = os.getenv("BASE_URL", "http://localhost:8000")
 DEV_LOGIN_ENABLED = os.getenv("DEV_LOGIN_ENABLED", "true").lower() == "true"
 
 # ── Auth Token Cache ──────────────────────────────────────────────────────────
@@ -75,6 +77,52 @@ def resolve(value, ids: dict):
     return value
 
 
+# ── Deterministic Evaluator ───────────────────────────────────────────────────
+
+_HTTP_CODE_RE = re.compile(r"HTTP\s+(\d{3})")
+
+
+def _expected_codes(expected_behavior: str) -> set[int]:
+    """Parse every HTTP status code mentioned in the expected_behavior string."""
+    codes = {int(m) for m in _HTTP_CODE_RE.findall(expected_behavior)}
+    return codes if codes else set(range(200, 300))  # fallback: accept any 2xx
+
+
+def evaluate(
+    expected_behavior: str,
+    actual_status: int,
+    actual_body: str,
+    response_headers: dict,
+) -> dict:
+    """
+    Rule-based evaluation — instant, no external calls.
+
+    Rules:
+    1. actual_status must be in the set of codes named in expected_behavior.
+    2. Body must not be empty (except 204).
+    3. Excel endpoints must return the correct Content-Type.
+    """
+    codes = _expected_codes(expected_behavior)
+    issues: list[str] = []
+
+    if actual_status not in codes:
+        issues.append(f"Expected status in {sorted(codes)}, got {actual_status}.")
+
+    if actual_status != 204 and not actual_body.strip():
+        issues.append("Response body is unexpectedly empty.")
+
+    xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    if "excel" in expected_behavior.lower() or "spreadsheetml" in expected_behavior.lower():
+        ct = response_headers.get("content-type", "")
+        if xlsx not in ct:
+            issues.append(f"Expected Content-Type '{xlsx}', got '{ct}'.")
+
+    passed = len(issues) == 0
+    score  = 10 if passed else max(0, 10 - len(issues) * 3)
+    reason = "All checks passed." if passed else " | ".join(issues)
+    return {"passed": passed, "score": score, "reason": reason}
+
+
 # ── Test Case Loader ──────────────────────────────────────────────────────────
 
 def load_test_cases():
@@ -92,18 +140,17 @@ def test_api_endpoint(case, test_ids):
     1. Resolves any dynamic ID placeholders in endpoint/payload.
     2. Obtains a JWT for the required role.
     3. Fires the HTTP request.
-    4. Sends actual response + expected behaviour to Gemini for evaluation.
-    5. Asserts based on Gemini's verdict.
+    4. Evaluates the response deterministically (no LLM).
+    5. Asserts pass/fail.
     """
-    # Deep-copy so we don't mutate the parametrize input between runs
     case = copy.deepcopy(case)
 
-    method           = case.get("method", "GET")
-    endpoint         = resolve(case.get("endpoint"), test_ids)
-    payload          = resolve(case.get("payload"), test_ids)
-    expected_behavior = case.get("expected_behavior")
-    auth_role        = case.get("auth_role")
-    skip_reason      = case.get("skip")
+    method            = case.get("method", "GET")
+    endpoint          = resolve(case.get("endpoint"), test_ids)
+    payload           = resolve(case.get("payload"), test_ids)
+    expected_behavior = case.get("expected_behavior", "")
+    auth_role         = case.get("auth_role")
+    skip_reason       = case.get("skip")
 
     if skip_reason:
         pytest.skip(skip_reason)
@@ -135,26 +182,28 @@ def test_api_endpoint(case, test_ids):
     except requests.exceptions.RequestException as e:
         pytest.fail(f"HTTP Request Failed: {e}")
 
-    # ── Gemini Evaluation ─────────────────────────────────────────────────────
-    print(f"\n--- Gemini Evaluation: [{case['id']}] {method} {endpoint} ---")
-    evaluation = evaluate_api_response(
-        endpoint=endpoint,
+    # ── Deterministic Evaluation ──────────────────────────────────────────────
+    result = evaluate(
         expected_behavior=expected_behavior,
         actual_status=actual_status,
         actual_body=actual_body,
+        response_headers=dict(response.headers),
     )
 
-    passed = evaluation.get("passed", False)
-    score  = evaluation.get("score", 0)
-    reason = evaluation.get("reason", "No reason provided.")
+    passed = result["passed"]
+    score  = result["score"]
+    reason = result["reason"]
 
-    print(f"  Status : {actual_status}")
-    print(f"  Score  : {score}/10")
-    print(f"  Passed : {passed}")
-    print(f"  Reason : {reason}")
+    print(f"\n  [{case['id']}] {method} {endpoint}")
+    print(f"  Status : {actual_status}  |  Score: {score}/10  |  {'✓ PASS' if passed else '✗ FAIL'}")
+    if not passed:
+        print(f"  Reason : {reason}")
+        print(f"  Body   : {actual_body[:200]}")
 
     assert passed is True, (
-        f"LLM Evaluation FAILED for [{case['id']}].\n"
-        f"  Score : {score}/10\n"
-        f"  Reason: {reason}"
+        f"FAILED [{case['id']}]  {method} {endpoint}\n"
+        f"  Status : {actual_status}\n"
+        f"  Score  : {score}/10\n"
+        f"  Reason : {reason}\n"
+        f"  Body   : {actual_body[:300]}"
     )
