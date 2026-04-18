@@ -1,92 +1,178 @@
 "use client";
 
 /**
- * Resident History Page
+ * Resident History — wiring doc §3.3
  *
- * GET /resident/transactions
- * Fetches transaction history (meal scans, physical scans, plan purchases).
+ * GET /resident/transactions?page=1&page_size=20
+ * Increment page until transactions.length < page_size or API returns empty.
+ *
+ * Maps: timestamp, meal_type, site_id/site_name, status, block_reason
  */
 
-import { useState, useEffect } from "react";
-import { Coffee, ArrowRight, Loader2, IndianRupee, Tag, AlertCircle } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/apiClient";
+import type { TransactionListResponse, Transaction } from "@/lib/types";
+import { Utensils, CheckCircle2, XCircle, RefreshCw, Loader2 } from "lucide-react";
 
-interface Transaction {
-  id: string;
-  type: "SCAN" | "MANUAL" | "PAYMENT" | "CREDIT_OVERRIDE";
-  amount?: number;
-  tokens_deducted?: number;
-  status: "SUCCESS" | "BLOCKED" | "PENDING" | "FAILED";
-  timestamp: string;
-  description: string;
+const PAGE_SIZE = 20;
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "Just now";
+  if (diffMins < 60) return `${diffMins} min ago`;
+  const diffHrs = Math.floor(diffMins / 60);
+  if (diffHrs < 24) return `${diffHrs}h ago`;
+  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-const statusColor = (status: Transaction["status"]) => {
-  switch (status) {
-    case "SUCCESS": return "text-emerald-600 bg-emerald-50";
-    case "BLOCKED":
-    case "FAILED": return "text-red-600 bg-red-50";
-    case "PENDING": return "text-amber-600 bg-amber-50";
-    default: return "text-slate-600 bg-slate-50";
-  }
-};
+function Skeleton() {
+  return (
+    <div className="flex items-center gap-4 p-4 bg-gray-50/50 rounded-2xl border border-gray-100 animate-pulse">
+      <div className="w-11 h-11 rounded-full bg-gray-200 shrink-0" />
+      <div className="flex-1 space-y-2">
+        <div className="h-4 bg-gray-200 rounded w-24" />
+        <div className="h-3 bg-gray-200 rounded w-40" />
+      </div>
+      <div className="h-6 w-14 bg-gray-200 rounded-lg" />
+    </div>
+  );
+}
 
-const typeIcon = (type: Transaction["type"]) => {
-  switch(type) {
-    case "SCAN": return <Coffee className="w-5 h-5 text-indigo-500" />;
-    case "MANUAL": return <Tag className="w-5 h-5 text-amber-500" />;
-    case "PAYMENT": return <IndianRupee className="w-5 h-5 text-emerald-500" />;
-    case "CREDIT_OVERRIDE": return <AlertCircle className="w-5 h-5 text-purple-500" />;
-    default: return <ArrowRight className="w-5 h-5 text-slate-500" />;
-  }
-};
-
-export default function ResidentHistoryPage() {
-  const [txs, setTxs] = useState<Transaction[]>([]);
+export default function ResidentHistory() {
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    api.get<{ transactions: Transaction[] }>("/resident/transactions")
-      .then(res => setTxs(res.transactions))
-      .catch(() => setTxs([]))
-      .finally(() => setLoading(false));
+  const fetchPage = useCallback(async (pageNum: number, append = false) => {
+    if (!append) setLoading(true);
+    else setLoadingMore(true);
+    setError(null);
+
+    try {
+      const data = await api.get<TransactionListResponse>(
+        `/resident/transactions?page=${pageNum}&page_size=${PAGE_SIZE}`
+      );
+      const incoming = data.transactions ?? [];
+      setTransactions((prev) => (append ? [...prev, ...incoming] : incoming));
+      setHasMore(incoming.length >= PAGE_SIZE);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load history.");
+    } finally {
+      setLoading(false);
+      setLoadingMore(false);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchPage(1);
+  }, [fetchPage]);
+
+  const loadMore = () => {
+    const next = page + 1;
+    setPage(next);
+    fetchPage(next, true);
+  };
+
   return (
-    <div className="p-6 pt-8 pb-24 animate-in fade-in duration-500">
-      <h1 className="text-2xl font-black text-gray-900 mb-6">History</h1>
-      
-      {loading ? (
-        <div className="flex h-32 items-center justify-center"><Loader2 className="w-6 h-6 animate-spin text-indigo-500"/></div>
-      ) : txs.length === 0 ? (
-        <div className="text-center p-8 bg-white rounded-3xl border border-gray-100 shadow-sm">
-           <p className="text-gray-500 font-medium">No transactions yet.</p>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="text-white mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">History</h1>
+          <p className="text-indigo-100 text-sm">Your recent meal scans</p>
         </div>
-      ) : (
-        <div className="space-y-4">
-          {txs.map((tx) => (
-            <div key={tx.id} className="bg-white p-5 rounded-3xl shadow-sm border border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="bg-gray-50 p-3 rounded-2xl flex-shrink-0">
-                  {typeIcon(tx.type)}
-                </div>
-                <div>
-                  <h3 className="font-bold text-gray-900 text-sm">{tx.description}</h3>
-                  <p className="text-xs text-gray-500 mt-0.5">{new Date(tx.timestamp).toLocaleString("en-IN", { timeStyle: 'short', dateStyle: 'medium'})}</p>
-                </div>
+        <button onClick={() => fetchPage(1)} className="bg-white/10 p-2 rounded-full hover:bg-white/20 transition-colors">
+          <RefreshCw className="w-4 h-4 text-white" />
+        </button>
+      </div>
+
+      <div className="bg-white rounded-[32px] p-6 shadow-xl shadow-gray-200/50 border border-gray-100 space-y-3">
+        {/* Loading skeletons */}
+        {loading && Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} />)}
+
+        {/* Error state */}
+        {error && !loading && (
+          <div className="text-center py-8 text-red-500 text-sm">
+            {error}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!loading && !error && transactions.length === 0 && (
+          <div className="text-center py-10 text-gray-400">
+            <Utensils className="w-10 h-10 mx-auto mb-3 opacity-40" />
+            <p className="font-semibold">No transactions yet</p>
+            <p className="text-xs mt-1">Your meal scan history will appear here</p>
+          </div>
+        )}
+
+        {/* Transaction rows */}
+        {!loading && transactions.map((tx) => (
+          <div
+            key={tx.id}
+            className="flex flex-row items-center justify-between p-4 bg-gray-50/50 rounded-2xl border border-gray-100 hover:bg-gray-50 transition-colors"
+          >
+            <div className="flex items-center gap-4">
+              <div className={`p-3 rounded-full shrink-0 ${
+                tx.status === "SUCCESS"
+                  ? "bg-emerald-100 text-emerald-600"
+                  : "bg-red-100 text-red-600"
+              } shadow-sm`}>
+                <Utensils className="w-5 h-5" />
               </div>
-              <div className="text-right">
-                <p className="font-black text-gray-900">
-                  {tx.amount ? `₹${tx.amount/100}` : tx.tokens_deducted ? `-${tx.tokens_deducted} cr` : ""}
+              <div>
+                <h3 className="font-bold text-gray-900 leading-tight capitalize">
+                  {tx.meal_type?.toLowerCase() ?? "Meal"}
+                </h3>
+                <p className="text-xs text-gray-500">
+                  {tx.site_name ?? tx.site_id ?? "—"} • {formatTime(tx.timestamp)}
                 </p>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full mt-1 inline-block ${statusColor(tx.status)}`}>
+                {tx.status === "BLOCKED" && tx.block_reason && (
+                  <p className="text-xs font-semibold text-red-500 mt-1 bg-red-50 inline-block px-1.5 py-0.5 rounded">
+                    {tx.block_reason.replaceAll("_", " ")}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col items-end shrink-0">
+              <span className={`font-black text-lg ${
+                tx.status === "SUCCESS" ? "text-gray-900" : "text-gray-400 line-through"
+              }`}>
+                {tx.status === "SUCCESS" ? "-1" : "—"}
+              </span>
+              <div className="flex items-center gap-1 mt-1">
+                {tx.status === "SUCCESS" ? (
+                  <CheckCircle2 className="w-3 h-3 text-emerald-500" />
+                ) : (
+                  <XCircle className="w-3 h-3 text-red-500" />
+                )}
+                <span className={`text-[10px] font-bold ${
+                  tx.status === "SUCCESS" ? "text-emerald-600" : "text-red-500"
+                }`}>
                   {tx.status}
                 </span>
               </div>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+
+        {/* Load more */}
+        {!loading && hasMore && transactions.length > 0 && (
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            className="w-full py-3 text-indigo-600 font-bold text-sm flex items-center justify-center gap-2 hover:bg-indigo-50 rounded-2xl transition-colors"
+          >
+            {loadingMore ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            {loadingMore ? "Loading..." : "Load more"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

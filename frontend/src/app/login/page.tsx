@@ -38,15 +38,16 @@ export default function LoginPage() {
       // Step 2 — Get Firebase ID token
       const idToken = await credential.user.getIdToken();
 
-      // Step 3 — Exchange with our backend
+      // Step 3 — Exchange with our backend (wiring doc §2.1 step 3)
       const data = await api.post<TokenResponse>("/auth/login", {
         firebase_id_token: idToken,
       });
 
-      // Step 4 — Persist and redirect
+      // Step 4 — Persist and redirect (role comes from server)
       login(data.access_token, data.refresh_token, data.role, data.user_id);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to sign in.";
+      // Friendly Firebase error messages
       if (msg.includes("invalid-credential") || msg.includes("wrong-password")) {
         setError("Invalid email or password. Please try again.");
       } else if (msg.includes("user-not-found")) {
@@ -65,6 +66,7 @@ export default function LoginPage() {
     <div className="flex h-screen w-full items-center justify-center bg-gray-50 px-4">
       <div className="w-full max-w-sm space-y-6">
 
+        {/* Header */}
         <div className="flex flex-col items-center space-y-3">
           <div className="bg-indigo-600 p-4 rounded-2xl shadow-lg shadow-indigo-200">
             <Utensils className="w-8 h-8 text-white" />
@@ -73,11 +75,15 @@ export default function LoginPage() {
           <p className="text-gray-500 text-sm">Sign in to your account</p>
         </div>
 
+        {/* Form Card */}
         <div className="bg-white px-6 py-8 shadow-xl shadow-gray-200/50 rounded-2xl border border-gray-100">
           <form onSubmit={handleLogin} className="space-y-5">
-            
+
+            {/* Email */}
             <div className="space-y-1">
-              <label className="text-sm font-medium text-gray-700 block">Email Address</label>
+              <label className="text-sm font-medium text-gray-700 block">
+                Email Address
+              </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Mail className="h-5 w-5 text-gray-400" />
@@ -86,6 +92,7 @@ export default function LoginPage() {
                   id="login-email"
                   type="email"
                   required
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="pl-10 block w-full rounded-xl border border-gray-200 shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 py-2.5 bg-gray-50/50 text-gray-900 sm:text-sm transition-shadow"
@@ -94,10 +101,16 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {/* Password */}
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-gray-700 block">Password</label>
-                <Link href="/forgot-password" className="text-sm font-semibold text-indigo-600 hover:text-indigo-500">
+                <label className="text-sm font-medium text-gray-700 block">
+                  Password
+                </label>
+                <Link
+                  href="/forgot-password"
+                  className="text-sm font-semibold text-indigo-600 hover:text-indigo-500"
+                >
                   Forgot password?
                 </Link>
               </div>
@@ -109,6 +122,7 @@ export default function LoginPage() {
                   id="login-password"
                   type="password"
                   required
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="pl-10 block w-full rounded-xl border border-gray-200 shadow-sm outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20 py-2.5 bg-gray-50/50 text-gray-900 sm:text-sm transition-shadow"
@@ -117,6 +131,7 @@ export default function LoginPage() {
               </div>
             </div>
 
+            {/* Error */}
             {error && (
               <div className="flex items-start gap-2.5 text-red-600 text-sm font-medium bg-red-50 p-3 rounded-xl border border-red-100">
                 <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
@@ -124,6 +139,7 @@ export default function LoginPage() {
               </div>
             )}
 
+            {/* Submit */}
             <button
               id="login-submit"
               type="submit"
@@ -133,13 +149,19 @@ export default function LoginPage() {
               {loading ? (
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
               ) : (
-                <><LogIn className="w-4 h-4 mr-2" />Sign In</>
+                <>
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Sign In
+                </>
               )}
             </button>
 
             <p className="text-center text-sm text-gray-600 mt-6 !mb-0">
               Don&apos;t have an account?{" "}
-              <Link href="/register" className="font-bold text-indigo-600 hover:text-indigo-500 transition-colors">
+              <Link
+                href="/register"
+                className="font-bold text-indigo-600 hover:text-indigo-500 transition-colors"
+              >
                 Sign up
               </Link>
             </p>
