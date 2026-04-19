@@ -31,15 +31,63 @@ export default function GuestPassPage() {
       .catch(() => setError("Unable to load resident site for guest pass."));
   }, []);
 
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) return resolve(true);
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
   const handleGenerate = async () => {
     setLoading(true);
     setError("");
     try {
       if (!siteId) throw new Error("Missing site assignment");
-      const res = await api.post<GuestPassResponse>("/guest-pass/purchase", { site_id: siteId });
-      setPassData(res);
+      
+      const isLoaded = await loadRazorpayScript();
+      if (!isLoaded) {
+        throw new Error("Razorpay SDK failed to load. Are you online?");
+      }
+
+      // 1. Create Order for ₹100 guest pass
+      const order = await api.post<any>("/payments/create-order", { 
+        guest_pass: true 
+      });
+
+      // 2. Open Razorpay Widget
+      const options = {
+        key: order.razorpay_key_id,
+        amount: order.amount,
+        currency: order.currency,
+        name: "MealTrace Digital",
+        description: "Guest Pass Purchase",
+        order_id: order.order_id,
+        handler: async function (response: any) {
+             try {
+                // 3. Complete actual purchase to get QR
+                const res = await api.post<GuestPassResponse>("/guest-pass/purchase", { site_id: siteId });
+                setPassData(res);
+             } catch (err: any) {
+                setError(err.message || "Payment succeeded but failed to generate pass");
+             }
+        },
+        theme: {
+          color: "#4f46e5",
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on("payment.failed", function (response: any) {
+        setError("Payment failed: " + response.error.description);
+      });
+      rzp.open();
+
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to generate guest pass");
+      setError(err instanceof Error ? err.message : "Failed to generate guest pass order");
     } finally {
       setLoading(false);
     }

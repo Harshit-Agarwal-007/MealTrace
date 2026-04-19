@@ -17,6 +17,13 @@ import { api } from "@/lib/apiClient";
 import type { PlanInfo, CreateOrderResponse } from "@/lib/types";
 import { useRouter } from "next/navigation";
 
+// Extend Window interface for Razorpay
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
+
 export default function PlansPage() {
   const router = useRouter();
   const [plans, setPlans] = useState<PlanInfo[]>([]);
@@ -31,22 +38,52 @@ export default function PlansPage() {
        .finally(() => setLoading(false));
   }, []);
 
+  const loadRazorpayScript = () => {
+    return new Promise((resolve) => {
+      if (window.Razorpay) return resolve(true);
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
+  };
+
   const handlePurchase = async () => {
     if (!selectedPlanId) return;
     setProcessing(true);
     try {
+      const isLoaded = await loadRazorpayScript();
+      if (!isLoaded) {
+        throw new Error("Razorpay SDK failed to load. Are you online?");
+      }
+
       const order = await api.post<CreateOrderResponse>("/payments/create-order", {
         plan_id: selectedPlanId,
         guest_pass: false,
       });
       
-      // Simulate Razorpay window (for demo purposes)
-      // In production, load https://checkout.razorpay.com/v1/checkout.js and new window.Razorpay(...)
-      
-      // We will pretend Payment succeeded and call backend success endpoint
-      // Note: Actually, in Razorpay webhooks handle the success. For PWA demo we assume success via UI trigger or we wait.
-      alert(`Order created. ID: ${order.order_id}\nAmount: ₹${order.amount / 100}`);
-      router.push("/resident");
+      const options = {
+        key: order.razorpay_key_id,
+        amount: order.amount,
+        currency: order.currency,
+        name: "MealTrace Digital",
+        description: "Meal Plan Purchase",
+        order_id: order.order_id,
+        handler: function (response: any) {
+          // The backend webhook completes the transaction, but we can optimistically redirect
+          router.push("/resident");
+        },
+        theme: {
+          color: "#4f46e5", // Indigo-600
+        },
+      };
+
+      const rzp = new window.Razorpay(options);
+      rzp.on("payment.failed", function (response: any) {
+        alert("Payment failed: " + response.error.description);
+      });
+      rzp.open();
 
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to create order");
@@ -65,7 +102,7 @@ export default function PlansPage() {
       </div>
 
       {loading ? (
-         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
+        <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
       ) : (
         <div className="space-y-6">
           {plans.map((plan) => (
@@ -87,6 +124,12 @@ export default function PlansPage() {
                   <p className="text-2xl font-black text-indigo-600">₹{plan.price}</p>
                 </div>
               </div>
+              
+              {plan.description && (
+                <p className="text-sm text-slate-600 mt-2 italic border-l-2 border-indigo-200 pl-3">
+                  {plan.description}
+                </p>
+              )}
               
               <ul className="space-y-2 mt-6">
                 <li className="flex items-center gap-2 text-sm text-slate-600 font-medium">

@@ -180,7 +180,7 @@ def process_webhook(payload_body: bytes, signature: str, event_data: dict) -> bo
         current_balance = resident_snap.get("balance") or 0
 
         if payment_type == "guest_pass":
-            credits_to_add = 1
+            credits_to_add = 0
         else:
             # Look up plan meal count
             plan_doc = db.collection("plans").document(plan_id).get()

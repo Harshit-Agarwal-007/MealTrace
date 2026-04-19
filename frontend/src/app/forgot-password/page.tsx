@@ -3,6 +3,8 @@ import { ArrowLeft, Mail, Info, Loader2, AlertCircle } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { api } from "@/lib/apiClient";
+import { auth } from "@/lib/firebase";
+import { sendPasswordResetEmail } from "firebase/auth";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
@@ -17,7 +19,12 @@ export default function ForgotPassword() {
     setError("");
     
     try {
+      // 1. Check with our backend if user exists in database
       await api.post("/auth/forgot-password", { email });
+      
+      // 2. If it did not throw 404, we actually send the email via Firebase client
+      await sendPasswordResetEmail(auth, email);
+      
       setSent(true);
     } catch (err: any) {
       setError(err.message || "Failed to send reset link.");

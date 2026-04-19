@@ -90,16 +90,16 @@ async def refresh_token(request: RefreshTokenRequest):
 @router.post("/forgot-password", response_model=AuthStatusResponse)
 async def forgot_password(request: ForgotPasswordRequest):
     """
-    Trigger a Firebase password reset email.
-
-    Always returns success (to prevent email enumeration) but
-    only actually sends if the email is registered.
+    Trigger a Firebase password reset check.
+    If the user exists, return success so the frontend knows to actually send the email.
     """
-    send_password_reset(request.email)
-    # Always return success to prevent email enumeration
+    exists = send_password_reset(request.email)
+    if not exists:
+        raise HTTPException(status_code=404, detail="User not found or not registered.")
+    
     return AuthStatusResponse(
         status="success",
-        message="If this email is registered, a password reset link has been sent.",
+        message="User found. Please send reset email via client SDK.",
     )
 
 

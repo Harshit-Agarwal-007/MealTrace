@@ -62,7 +62,7 @@ export default function ResidentDashboard() {
       // Attempt to show cached QR when offline
       const cached = localStorage.getItem("cachedQR");
       if (cached) {
-        setQr({ qr_base64: cached });
+        setQr({ qr_base64: cached, generated_at: new Date().toISOString() });
         setStale(true);
       }
       setError("Could not load fresh data. Showing cached information.");
@@ -116,20 +116,20 @@ export default function ResidentDashboard() {
       )}
 
       {/* Header */}
-      <div className="flex justify-between items-center text-white mb-8">
+      <div className="flex justify-between items-center mb-8">
         <div>
-          <p className="text-indigo-100 text-sm font-medium">Hello,</p>
+          <p className="text-indigo-600 font-bold text-sm">Hello,</p>
           {loading ? (
-            <Skeleton className="h-7 w-36 mt-1 bg-white/20" />
+            <Skeleton className="h-7 w-36 mt-1 bg-slate-200" />
           ) : (
-            <h1 className="text-2xl font-bold">{profile?.name ?? "Resident"}</h1>
+            <h1 className="text-2xl font-bold text-slate-900">{profile?.name ?? "Resident"}</h1>
           )}
         </div>
         <Link
           href="/resident/notifications"
-          className="bg-white/10 p-2.5 rounded-full hover:bg-white/20 transition-colors active:scale-95"
+          className="bg-indigo-100 p-2.5 rounded-full hover:bg-indigo-200 transition-colors active:scale-95 text-indigo-600"
         >
-          <Bell className="w-5 h-5 text-white" />
+          <Bell className="w-5 h-5" />
         </Link>
       </div>
 

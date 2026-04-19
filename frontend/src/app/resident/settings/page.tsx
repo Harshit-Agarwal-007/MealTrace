@@ -1,15 +1,39 @@
 "use client";
 import { ArrowLeft, Bell, Key, Save, User, Mail, Phone } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { api } from "@/lib/apiClient";
+import type { ResidentProfile } from "@/lib/types";
 
 export default function SettingsPage() {
   const [toast, setToast] = useState(false);
+  const [profile, setProfile] = useState<ResidentProfile | null>(null);
+  const [formData, setFormData] = useState({
+    name: "",
+    email: "",
+    phone: "",
+  });
 
-  const handleSave = (e: any) => {
+  useEffect(() => {
+    api.get<ResidentProfile>("/resident/profile").then((data) => {
+      setProfile(data);
+      setFormData({
+        name: data.name || "",
+        email: data.email || "",
+        phone: data.phone || "",
+      });
+    }).catch(console.error);
+  }, []);
+
+  const handleSave = async (e: any) => {
     e.preventDefault();
-    setToast(true);
-    setTimeout(() => setToast(false), 3000);
+    try {
+      await api.patch("/resident/profile", formData);
+      setToast(true);
+      setTimeout(() => setToast(false), 3000);
+    } catch (error) {
+      console.error(error);
+    }
   };
 
   return (
@@ -40,7 +64,7 @@ export default function SettingsPage() {
                <label className="text-xs text-gray-500 font-bold tracking-wider uppercase mb-1.5 block">Full Name</label>
                <div className="relative">
                  <User className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                 <input type="text" defaultValue="Harshit Agarwal" className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none" />
+                 <input type="text" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none" />
                </div>
             </div>
 
@@ -48,7 +72,8 @@ export default function SettingsPage() {
                <label className="text-xs text-gray-500 font-bold tracking-wider uppercase mb-1.5 block">Email Address</label>
                <div className="relative">
                  <Mail className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                 <input type="email" defaultValue="harshit@example.com" className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none" />
+                 {/* Email shouldn't usually be editable without Auth verification, but mapping it for visual context */}
+                 <input type="email" value={formData.email} disabled className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none opacity-60 cursor-not-allowed" />
                </div>
             </div>
 
@@ -56,7 +81,7 @@ export default function SettingsPage() {
                <label className="text-xs text-gray-500 font-bold tracking-wider uppercase mb-1.5 block">Phone Number</label>
                <div className="relative">
                  <Phone className="w-4 h-4 text-gray-400 absolute left-3 top-3" />
-                 <input type="tel" defaultValue="+91 9876543210" className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none" />
+                 <input type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full pl-9 pr-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:border-indigo-500 focus:outline-none" />
                </div>
             </div>
          </div>
