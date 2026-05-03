@@ -425,6 +425,7 @@ def purchase_guest_pass(
         "site_id": site_id,
         "meal_type": meal_type,
         "qr_payload": qr_payload,
+        "qr_base64": qr_base64,
         "status": "UNUSED",
         "expiry_at": expiry,
         "created_at": now,

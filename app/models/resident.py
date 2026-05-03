@@ -147,6 +147,7 @@ class GuestPassInfo(BaseModel):
     expiry_at: datetime
     created_at: datetime
     used_at: Optional[datetime] = None
+    qr_base64: Optional[str] = None  # PNG base64; omitted for legacy docs until regenerated
 
 
 class ResidentListResponse(BaseModel):

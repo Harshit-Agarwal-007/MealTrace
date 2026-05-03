@@ -90,7 +90,7 @@ export interface QRCodeResponse {
 export interface GuestPassInfo {
   id: string;
   site_id: string;
-  meal_type: string;
+  meal_type?: string;
   qr_base64?: string;
   status: "UNUSED" | "USED";
   created_at: string;

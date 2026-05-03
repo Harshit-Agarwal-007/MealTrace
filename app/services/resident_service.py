@@ -268,9 +268,17 @@ def get_guest_passes(resident_id: str) -> list:
         reverse=True,
     )
 
+    from app.utils.qr_gen import generate_qr_image_base64
+
     passes = []
     for doc in sorted_docs:
-        data = doc.to_dict()
+        data = doc.to_dict() or {}
+        qr_b64 = data.get("qr_base64")
+        if not qr_b64 and data.get("qr_payload"):
+            try:
+                qr_b64 = generate_qr_image_base64(data["qr_payload"])
+            except Exception:
+                qr_b64 = None
         passes.append(GuestPassInfo(
             id=doc.id,
             site_id=data.get("site_id", ""),
@@ -279,6 +287,7 @@ def get_guest_passes(resident_id: str) -> list:
             expiry_at=data.get("expiry_at", datetime.now(timezone.utc)),
             created_at=data.get("created_at", datetime.now(timezone.utc)),
             used_at=data.get("used_at"),
+            qr_base64=qr_b64,
         ))
 
     return passes

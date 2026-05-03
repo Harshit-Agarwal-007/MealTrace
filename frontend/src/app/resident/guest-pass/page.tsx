@@ -1,17 +1,16 @@
 "use client";
 
 /**
- * Guest Pass
- *
- * POST /guest-pass/purchase
+ * Guest Pass — purchase via Razorpay, then show QR until USED or expired.
+ * Active UNUSED passes are restored from GET /resident/guest-passes on load.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { QrCode, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/apiClient";
 import Image from "next/image";
-import type { ResidentCatalogResponse, ResidentProfile } from "@/lib/types";
+import type { GuestPassInfo, ResidentCatalogResponse, ResidentProfile } from "@/lib/types";
 
 declare global {
   interface Window {
@@ -19,22 +18,55 @@ declare global {
   }
 }
 
-interface GuestPassResponse {
+interface ActiveGuestPassView {
   id: string;
   qr_base64: string;
   status: "UNUSED" | "USED";
   expiry_at: string;
 }
 
+function pickActiveGuestPass(list: GuestPassInfo[]): GuestPassInfo | null {
+  const now = Date.now();
+  for (const p of list) {
+    if (p.status !== "UNUSED" || !p.qr_base64) continue;
+    const ex = p.expiry_at ? new Date(p.expiry_at).getTime() : 0;
+    if (ex > now) return p;
+  }
+  return null;
+}
+
 export default function GuestPassPage() {
   const [loading, setLoading] = useState(false);
   const [siteLoading, setSiteLoading] = useState(true);
-  const [passData, setPassData] = useState<GuestPassResponse | null>(null);
+  const [passesHydrating, setPassesHydrating] = useState(true);
+  const [passData, setPassData] = useState<ActiveGuestPassView | null>(null);
   const [error, setError] = useState("");
   const [siteId, setSiteId] = useState("");
   const [guestPassEnabled, setGuestPassEnabled] = useState(true);
   const [priceInr, setPriceInr] = useState(100);
   const [profile, setProfile] = useState<ResidentProfile | null>(null);
+
+  const hydrateActivePass = useCallback(async () => {
+    setPassesHydrating(true);
+    try {
+      const list = await api.get<GuestPassInfo[]>("/resident/guest-passes");
+      const active = pickActiveGuestPass(list);
+      if (active?.qr_base64 && active.expiry_at) {
+        setPassData({
+          id: active.id,
+          qr_base64: active.qr_base64,
+          status: "UNUSED",
+          expiry_at: active.expiry_at,
+        });
+      } else {
+        setPassData(null);
+      }
+    } catch {
+      /* non-fatal */
+    } finally {
+      setPassesHydrating(false);
+    }
+  }, []);
 
   useEffect(() => {
     setSiteLoading(true);
@@ -75,6 +107,11 @@ export default function GuestPassPage() {
       .finally(() => setSiteLoading(false));
   }, []);
 
+  useEffect(() => {
+    if (siteLoading) return;
+    void hydrateActivePass();
+  }, [siteLoading, hydrateActivePass]);
+
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
       if (window.Razorpay) return resolve(true);
@@ -91,18 +128,21 @@ export default function GuestPassPage() {
     setError("");
     try {
       if (!siteId) throw new Error("Missing site assignment");
-      
+
       const isLoaded = await loadRazorpayScript();
       if (!isLoaded) {
         throw new Error("Razorpay SDK failed to load. Are you online?");
       }
 
-      // 1. Create Order for ₹100 guest pass
-      const order = await api.post<any>("/payments/create-order", { 
-        guest_pass: true 
+      const order = await api.post<{
+        razorpay_key_id: string;
+        amount: number;
+        currency: string;
+        order_id: string;
+      }>("/payments/create-order", {
+        guest_pass: true,
       });
 
-      // 2. Open Razorpay Widget
       const options = {
         key: order.razorpay_key_id,
         amount: order.amount,
@@ -120,13 +160,23 @@ export default function GuestPassPage() {
           razorpay_signature: string;
         }) {
           try {
-            const res = await api.post<GuestPassResponse>("/guest-pass/purchase", {
+            const res = await api.post<{
+              id: string;
+              qr_base64: string;
+              status: string;
+              expiry_at: string;
+            }>("/guest-pass/purchase", {
               site_id: siteId,
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
             });
-            setPassData(res);
+            setPassData({
+              id: res.id,
+              qr_base64: res.qr_base64,
+              status: "UNUSED",
+              expiry_at: res.expiry_at,
+            });
           } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Payment succeeded but failed to generate pass");
           }
@@ -137,11 +187,10 @@ export default function GuestPassPage() {
       };
 
       const rzp = new window.Razorpay(options);
-      rzp.on("payment.failed", function (response: any) {
-        setError("Payment failed: " + response.error.description);
+      rzp.on("payment.failed", function (response: { error?: { description?: string } }) {
+        setError("Payment failed: " + (response.error?.description ?? "Unknown error"));
       });
       rzp.open();
-
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to generate guest pass order");
     } finally {
@@ -149,68 +198,95 @@ export default function GuestPassPage() {
     }
   };
 
+  const expiryLabel =
+    passData?.expiry_at &&
+    new Date(passData.expiry_at).toLocaleString("en-IN", {
+      day: "numeric",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
   return (
-    <div className="p-6 pt-8 pb-24 animate-in fade-in duration-500 bg-slate-50 min-h-screen">
-      <div className="flex items-center gap-4 mb-8">
-        <Link href="/resident" className="bg-white p-2.5 rounded-full shadow-sm">
-          <ArrowLeft className="w-5 h-5 text-slate-700" />
+    <div className="min-h-screen bg-slate-50 p-6 pb-24 pt-8 animate-in fade-in duration-500">
+      <div className="mb-8 flex items-center gap-4">
+        <Link href="/resident" className="rounded-full bg-white p-2.5 shadow-sm">
+          <ArrowLeft className="h-5 w-5 text-slate-700" />
         </Link>
         <h1 className="text-2xl font-black text-slate-900">Guest Pass</h1>
       </div>
 
       {!passData ? (
-        <div className="bg-white rounded-3xl p-6 shadow-sm border border-slate-100 text-center">
-          <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
-             <QrCode className="w-10 h-10 text-indigo-600" />
+        <div className="rounded-3xl border border-slate-100 bg-white p-6 text-center shadow-sm">
+          <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-indigo-50">
+            <QrCode className="h-10 w-10 text-indigo-600" />
           </div>
-          <h2 className="text-xl font-bold text-slate-900 mb-2">Generate One-Time Pass</h2>
-          <p className="text-sm text-slate-500 mb-8">
+          <h2 className="mb-2 text-xl font-bold text-slate-900">Generate One-Time Pass</h2>
+          <p className="mb-4 text-sm text-slate-500">
             This will create a temporary QR code valid for a single meal. Your site price is{" "}
             <span className="font-bold text-slate-800">₹{priceInr}</span> (charged at checkout).
           </p>
-          
+          <p className="mb-8 text-xs font-medium leading-relaxed text-slate-500">
+            After purchase, your guest pass QR stays on this page until it is <strong>used at a scan</strong> or{" "}
+            <strong>expires</strong> (24 hours). You can leave and come back — it is saved to your account.
+          </p>
+
           {error && (
-            <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm font-semibold mb-4 text-left">
+            <p className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-left text-sm font-semibold text-amber-800">
               {error}
             </p>
           )}
 
           <button
-            onClick={handleGenerate}
-            className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-md shadow-indigo-200"
-            disabled={loading || siteLoading || !siteId?.trim() || !guestPassEnabled}
+            onClick={() => void handleGenerate()}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 py-4 font-bold text-white shadow-md shadow-indigo-200 transition-all disabled:opacity-60"
+            disabled={loading || siteLoading || passesHydrating || !siteId?.trim() || !guestPassEnabled}
             title={!siteId?.trim() && !siteLoading ? "Site assignment required" : undefined}
           >
-            {siteLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+            {siteLoading || passesHydrating ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
             ) : loading ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
               `Generate Pass — ₹${priceInr}`
             )}
           </button>
         </div>
       ) : (
-        <div className="bg-white rounded-3xl p-8 shadow-xl shadow-indigo-100/50 border border-indigo-50 text-center animate-in zoom-in-95">
-          <div className="flex justify-center mb-6">
-             <div className="bg-emerald-50 text-emerald-500 p-3 rounded-full">
-               <CheckCircle2 className="w-8 h-8" />
-             </div>
+        <div className="animate-in zoom-in-95 rounded-3xl border border-indigo-50 bg-white p-8 text-center shadow-xl shadow-indigo-100/50">
+          <div className="mb-6 flex justify-center">
+            <div className="rounded-full bg-emerald-50 p-3 text-emerald-500">
+              <CheckCircle2 className="h-8 w-8" />
+            </div>
           </div>
-          <h2 className="text-xl font-black text-slate-900 mb-1">Pass Generated!</h2>
-          <p className="text-sm text-slate-500 mb-8 font-medium">Valid for 24 hours from issue</p>
-          
-          <div className="bg-white border-4 border-indigo-50 rounded-2xl p-4 inline-block shadow-inner mb-6 relative w-48 h-48">
-             <Image 
-               fill
-              src={`data:image/png;base64,${passData.qr_base64}`} 
-               alt="Guest Pass QR" 
-               className="object-contain"
-               unoptimized
-             />
+          <h2 className="mb-1 text-xl font-black text-slate-900">Your guest pass</h2>
+          <p className="mb-2 text-sm font-medium text-slate-500">
+            {expiryLabel ? <>Valid until {expiryLabel}</> : "Valid for 24 hours from issue"}
+          </p>
+          <p className="mb-8 text-xs leading-relaxed text-slate-500">
+            This QR is stored on your account until the pass is used or expires. You can safely leave this screen and
+            return later.
+          </p>
+
+          <div className="relative mb-6 inline-block h-48 w-48 rounded-2xl border-4 border-indigo-50 bg-white p-4 shadow-inner">
+            <Image
+              fill
+              src={`data:image/png;base64,${passData.qr_base64}`}
+              alt="Guest Pass QR"
+              className="object-contain"
+              unoptimized
+            />
           </div>
-          
-          <p className="text-indigo-600 font-bold bg-indigo-50 py-2 rounded-xl">ID: {passData.id}</p>
+
+          <p className="rounded-xl bg-indigo-50 py-2 font-bold text-indigo-600">ID: {passData.id}</p>
+
+          <button
+            type="button"
+            onClick={() => void hydrateActivePass()}
+            className="mt-6 text-sm font-bold text-indigo-600 underline decoration-indigo-200 underline-offset-2"
+          >
+            Refresh status
+          </button>
         </div>
       )}
     </div>
