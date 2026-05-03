@@ -29,11 +29,9 @@ POST    /admin/credit-override        — Manual credit add/deduct + reason
 
 ── Reports ──
 GET     /admin/reports/weekly         — Excel — attendance
-GET     /admin/reports/monthly        — Monthly summary
-GET     /admin/reports/financial      — Payment transaction log
+GET     /admin/reports/financial      — Payment log (optional start_date, end_date YYYY-MM-DD UTC)
 GET     /admin/reports/residents      — Full residents roster (Excel)
-GET     /admin/reports/exception      — Blocked scan log by date range
-GET     /admin/reports/scans          — Full scan log (date range, optional site)
+GET     /admin/reports/scans          — Successful scans (date range, optional site)
 
 ── Dashboard ──
 GET     /admin/dashboard/stats        — Live dashboard stats
@@ -98,9 +96,7 @@ from app.services.payment_service import credit_override
 from app.services.catalog_service import get_consumer_config, update_consumer_config
 from app.services.report_service import (
     generate_weekly_report,
-    generate_monthly_report,
     generate_financial_report,
-    generate_exception_report,
     generate_residents_report,
     generate_scans_activity_report,
 )
@@ -546,28 +542,25 @@ async def admin_weekly_report(
     )
 
 
-@router.get("/reports/monthly")
-async def admin_monthly_report(
-    year: Optional[int] = Query(None),
-    month: Optional[int] = Query(None, ge=1, le=12),
-    current_user: dict = Depends(require_admin),
-):
-    """Download monthly summary report as Excel file."""
-    excel_bytes = generate_monthly_report(year=year, month=month)
-
-    return StreamingResponse(
-        io.BytesIO(excel_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=monthly_summary_report.xlsx"},
-    )
-
-
 @router.get("/reports/financial")
 async def admin_financial_report(
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD), UTC midnight inclusive"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD), UTC end of day inclusive"),
     current_user: dict = Depends(require_admin),
 ):
-    """Download financial/payment transaction log as Excel file."""
-    excel_bytes = generate_financial_report()
+    """Download financial/payment transaction log as Excel file, optionally limited to a date range."""
+    sd = None
+    ed = None
+    if start_date:
+        sd = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+    if end_date:
+        day = datetime.fromisoformat(end_date).date()
+        ed = datetime(day.year, day.month, day.day, 23, 59, 59, tzinfo=timezone.utc)
+
+    if sd and ed and sd > ed:
+        raise HTTPException(status_code=400, detail="start_date must be on or before end_date")
+
+    excel_bytes = generate_financial_report(start_date=sd, end_date=ed)
 
     return StreamingResponse(
         io.BytesIO(excel_bytes),
@@ -590,29 +583,6 @@ async def admin_residents_report(
     )
 
 
-@router.get("/reports/exception")
-async def admin_exception_report(
-    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
-    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
-    current_user: dict = Depends(require_admin),
-):
-    """Download exception report (blocked scans) as Excel file by date range."""
-    sd = None
-    ed = None
-    if start_date:
-        sd = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
-    if end_date:
-        ed = datetime.fromisoformat(end_date).replace(tzinfo=timezone.utc)
-
-    excel_bytes = generate_exception_report(start_date=sd, end_date=ed)
-
-    return StreamingResponse(
-        io.BytesIO(excel_bytes),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": "attachment; filename=exception_report.xlsx"},
-    )
-
-
 @router.get("/reports/scans")
 async def admin_scans_activity_report(
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD), UTC day start"),
@@ -621,7 +591,7 @@ async def admin_scans_activity_report(
     current_user: dict = Depends(require_admin),
 ):
     """
-    Download full scan activity (success + blocked) for a date range.
+    Download successful scan activity for a date range.
     Use this for audit trails; admin live feeds return only the latest rows.
     """
     sd = None

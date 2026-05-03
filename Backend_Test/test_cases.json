@@ -490,23 +490,9 @@
     "expected_behavior": "Should return HTTP 200. The Content-Type header must be 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' (Excel format). Response body must be a non-empty binary file."
   },
   {
-    "id": "admin_report_monthly",
-    "method": "GET",
-    "endpoint": "/admin/reports/monthly",
-    "auth_role": "SUPER_ADMIN",
-    "expected_behavior": "Should return HTTP 200. The Content-Type header must be 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' (Excel format). Response must be a downloadable Excel file."
-  },
-  {
     "id": "admin_report_financial",
     "method": "GET",
     "endpoint": "/admin/reports/financial",
-    "auth_role": "SUPER_ADMIN",
-    "expected_behavior": "Should return HTTP 200. Content-Type must be 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'. Response body must be non-empty."
-  },
-  {
-    "id": "admin_report_exception",
-    "method": "GET",
-    "endpoint": "/admin/reports/exception",
     "auth_role": "SUPER_ADMIN",
     "expected_behavior": "Should return HTTP 200. Content-Type must be 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'. Response body must be non-empty."
   },

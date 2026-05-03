@@ -221,7 +221,7 @@ Below: **screen name**, **purpose**, **entry**, **UI elements**, **CTAs**, **API
 
 ### 6.7 Reports (Excel)
 
-- **GET /admin/reports/weekly**, **monthly**, **financial**, **exception** — trigger **file download**; **exception** accepts date range query params per API.
+- **GET /admin/reports/weekly**, **financial**, **residents**, **scans** — trigger **file download**; **financial** and **scans** accept date range query params (and optional site for scans) per API.
 
 ### 6.8 Plans (catalog) management
 

@@ -33,7 +33,7 @@ MealTrace/
 │   │   ├── payment_service.py     # Razorpay orders, webhook processing, credit override
 │   │   ├── resident_service.py    # Profile CRUD, QR gen, transactions, bulk import
 │   │   ├── site_service.py        # Site CRUD + meal window config
-│   │   └── report_service.py      # Excel export: weekly/monthly/financial/exception
+│   │   └── report_service.py      # Excel export: weekly, financial, residents, successful scans
 │   │
 │   ├── routes/                    # FastAPI APIRouter modules
 │   │   ├── auth.py                # POST /auth/login, /auth/refresh-token, /auth/logout
@@ -109,9 +109,9 @@ MealTrace/
 | DELETE | `/admin/residents/{id}` | Admin | Soft-delete + invalidate QR |
 | POST | `/admin/credit-override` | Admin | Manual credit add/deduct |
 | GET | `/admin/reports/weekly` | Admin | Excel download |
-| GET | `/admin/reports/monthly` | Admin | Excel download |
-| GET | `/admin/reports/financial` | Admin | Excel download |
-| GET | `/admin/reports/exception` | Admin | Excel download (date range) |
+| GET | `/admin/reports/financial` | Admin | Excel download (optional `start_date`, `end_date` query, YYYY-MM-DD UTC) |
+| GET | `/admin/reports/residents` | Admin | Excel roster |
+| GET | `/admin/reports/scans` | Admin | Excel successful scans (date range) |
 | GET | `/admin/dashboard/stats` | Admin | Live stats (counts, meals today) |
 | GET | `/admin/dashboard/scan-feed` | Admin | Recent scan activity feed |
 

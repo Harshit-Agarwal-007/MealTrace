@@ -144,7 +144,7 @@ The implementation (`app/services/scan_service.py`) enforces **seven** block rea
 
 **Credits:** `POST /admin/credit-override`, `GET /admin/credit-overrides`.
 
-**Reports (Excel):** `GET /admin/reports/weekly`, `monthly`, `financial`, `exception` (query params per route).
+**Reports (Excel):** `GET /admin/reports/weekly`, `financial`, `residents`, `scans` (query params per route).
 
 **Dashboard:** `GET /admin/dashboard/stats`, `GET /admin/dashboard/scan-feed`.
 

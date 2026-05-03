@@ -8,7 +8,7 @@
  *  GET  /admin/payments?page=&status=  → Paginated transaction list
  *  POST /admin/credit-override         → Manual credit add/deduct
  *  GET  /admin/credit-overrides        → Credit override audit log
- *  GET  /admin/reports/financial       → Download Excel (wiring doc §5.6)
+ *  GET  /admin/reports/financial?start_date=&end_date= → Download Excel (date range, UTC)
  *
  * Features:
  *  - Revenue KPI cards (total, plan, guest-pass, success/fail breakdown)
@@ -80,6 +80,15 @@ function formatTime(iso: string) {
   } catch { return "—"; }
 }
 
+function firstOfMonthISO(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+}
+
+function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function KpiCard({
@@ -145,6 +154,8 @@ export default function AdminPaymentsPage() {
 
   // ── Excel download ─────────────────────────────────────────────────────────
   const [downloading, setDownloading] = useState(false);
+  const [finExportStart, setFinExportStart] = useState(firstOfMonthISO);
+  const [finExportEnd, setFinExportEnd] = useState(todayISO);
 
   // ── Fetch summary ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -219,8 +230,9 @@ export default function AdminPaymentsPage() {
   const downloadReport = async () => {
     setDownloading(true);
     try {
-      const blob = await api.get<Blob>("/admin/reports/financial", { returnBlob: true } as any);
-      downloadBlob(blob, "mealtrace_financial_report.xlsx");
+      const q = new URLSearchParams({ start_date: finExportStart, end_date: finExportEnd });
+      const blob = await api.get<Blob>(`/admin/reports/financial?${q.toString()}`, { returnBlob: true });
+      downloadBlob(blob, `mealtrace_financial_${finExportStart}_${finExportEnd}.xlsx`);
     } catch {
       alert("Failed to download report. Try again.");
     } finally {
@@ -232,7 +244,7 @@ export default function AdminPaymentsPage() {
     <div className="p-5 pt-6 pb-28 space-y-6 animate-in fade-in duration-500">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="flex items-center gap-3">
           <Link href="/admin" className="p-2 bg-slate-100 rounded-xl hover:bg-slate-200 transition-colors">
             <ArrowLeft className="w-4 h-4 text-slate-600" />
@@ -242,14 +254,37 @@ export default function AdminPaymentsPage() {
             <p className="text-xs text-slate-400 font-medium mt-0.5">Revenue, transactions & credits</p>
           </div>
         </div>
-        <button
-          onClick={downloadReport}
-          disabled={downloading}
-          className="flex items-center gap-2 bg-indigo-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md shadow-indigo-600/25 hover:bg-indigo-700 active:scale-95 transition-all disabled:opacity-60"
-        >
-          {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-          Export Excel
-        </button>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[220px] sm:items-end">
+          <div className="grid w-full grid-cols-2 gap-2">
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Export from (UTC)
+              <input
+                type="date"
+                value={finExportStart}
+                onChange={(e) => setFinExportStart(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-800"
+              />
+            </label>
+            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Export to (UTC)
+              <input
+                type="date"
+                value={finExportEnd}
+                onChange={(e) => setFinExportEnd(e.target.value)}
+                className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-bold text-slate-800"
+              />
+            </label>
+          </div>
+          <button
+            type="button"
+            onClick={downloadReport}
+            disabled={downloading}
+            className="flex w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-indigo-600/25 transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-60 sm:w-auto"
+          >
+            {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            Export Excel
+          </button>
+        </div>
       </div>
 
       {/* KPI Cards */}

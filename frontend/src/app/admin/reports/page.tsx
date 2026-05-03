@@ -24,10 +24,6 @@ export default function AdminReports() {
     d.setDate(d.getDate() - 7);
     return d.toISOString().slice(0, 10);
   });
-  const [monthYear, setMonthYear] = useState(() => new Date().getFullYear());
-  const [monthNum, setMonthNum] = useState(() => new Date().getMonth() + 1);
-  const [excStart, setExcStart] = useState(firstOfMonthISO);
-  const [excEnd, setExcEnd] = useState(todayISO);
   const [scanStart, setScanStart] = useState(() => {
     const d = new Date();
     d.setDate(d.getDate() - 7);
@@ -35,6 +31,8 @@ export default function AdminReports() {
   });
   const [scanEnd, setScanEnd] = useState(todayISO);
   const [scanSiteId, setScanSiteId] = useState("");
+  const [financialStart, setFinancialStart] = useState(firstOfMonthISO);
+  const [financialEnd, setFinancialEnd] = useState(todayISO);
 
   const runDownload = async (key: string, path: string, filename: string) => {
     setErr(null);
@@ -74,53 +72,43 @@ export default function AdminReports() {
         ),
     },
     {
-      key: "monthly",
-      title: "Monthly summary",
-      desc: "Per-resident meal totals and average meals per day for a calendar month.",
+      key: "financial",
+      title: "Financial / payments",
+      desc: "Razorpay orders and payment rows. Defaults to this calendar month; change the range for any period.",
       fmt: "XLSX",
       extra: (
         <div className="mt-2 grid grid-cols-2 gap-2">
           <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            Year
+            From (UTC)
             <input
-              type="number"
-              min={2020}
-              max={2100}
-              value={monthYear}
-              onChange={(e) => setMonthYear(parseInt(e.target.value, 10) || new Date().getFullYear())}
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold"
+              type="date"
+              value={financialStart}
+              onChange={(e) => setFinancialStart(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-bold"
             />
           </label>
           <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            Month
-            <select
-              value={monthNum}
-              onChange={(e) => setMonthNum(parseInt(e.target.value, 10))}
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold"
-            >
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                <option key={m} value={m}>
-                  {m}
-                </option>
-              ))}
-            </select>
+            To (UTC)
+            <input
+              type="date"
+              value={financialEnd}
+              onChange={(e) => setFinancialEnd(e.target.value)}
+              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-bold"
+            />
           </label>
         </div>
       ),
-      onDownload: () =>
-        runDownload(
-          "monthly",
-          `/admin/reports/monthly?year=${monthYear}&month=${monthNum}`,
-          `monthly_summary_${monthYear}-${String(monthNum).padStart(2, "0")}.xlsx`
-        ),
-    },
-    {
-      key: "financial",
-      title: "Financial / payments",
-      desc: "Razorpay orders and payment rows from the payments collection.",
-      fmt: "XLSX",
-      extra: null,
-      onDownload: () => runDownload("financial", "/admin/reports/financial", "financial_report.xlsx"),
+      onDownload: () => {
+        const q = new URLSearchParams({
+          start_date: financialStart,
+          end_date: financialEnd,
+        });
+        return runDownload(
+          "financial",
+          `/admin/reports/financial?${q.toString()}`,
+          `financial_report_${financialStart}_${financialEnd}.xlsx`
+        );
+      },
     },
     {
       key: "residents",
@@ -131,43 +119,9 @@ export default function AdminReports() {
       onDownload: () => runDownload("residents", "/admin/reports/residents", "residents_roster.xlsx"),
     },
     {
-      key: "exception",
-      title: "Blocked scans (exceptions)",
-      desc: "Failed validations with block reason — same underlying data as live feeds, wider window.",
-      fmt: "XLSX",
-      extra: (
-        <div className="mt-2 grid grid-cols-2 gap-2">
-          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            From
-            <input
-              type="date"
-              value={excStart}
-              onChange={(e) => setExcStart(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-bold"
-            />
-          </label>
-          <label className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            To
-            <input
-              type="date"
-              value={excEnd}
-              onChange={(e) => setExcEnd(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-xs font-bold"
-            />
-          </label>
-        </div>
-      ),
-      onDownload: () =>
-        runDownload(
-          "exception",
-          `/admin/reports/exception?start_date=${encodeURIComponent(excStart)}&end_date=${encodeURIComponent(excEnd)}`,
-          `exception_report_${excStart}_${excEnd}.xlsx`
-        ),
-    },
-    {
       key: "scans",
-      title: "Scan activity (full log)",
-      desc: "Every scan row in the window (success and blocked). Use this for audits; the dashboard feed shows only the latest scans.",
+      title: "Scan activity (successful scans)",
+      desc: "Successful meal scans in the date range. The dashboard feed shows only the latest rows.",
       fmt: "XLSX",
       extra: (
         <div className="mt-2 space-y-2">

@@ -130,26 +130,26 @@ This file serves as the singular source of truth for all backend API endpoints. 
 
 **Parameters**: start_date (query): string
 
-### `GET` `/admin/reports/monthly`
-> **Admin Monthly Report**
+### `GET` `/admin/reports/residents`
+> **Admin Residents Roster**
 > 
-> Download monthly summary report as Excel file.
+> Download full residents roster as Excel file.
 
-**Parameters**: year (query): string, month (query): string
+**Parameters**: None
+
+### `GET` `/admin/reports/scans`
+> **Admin Scan Activity**
+> 
+> Download successful scan rows for a date range (optional `site_id`).
+
+**Parameters**: start_date (query): string, end_date (query): string, site_id (query): optional string
 
 ### `GET` `/admin/reports/financial`
 > **Admin Financial Report**
 > 
-> Download financial/payment transaction log as Excel file.
+> Download financial/payment transaction log as Excel file. Omit both query params to include all payments (newest first).
 
-**Parameters**: None
-
-### `GET` `/admin/reports/exception`
-> **Admin Exception Report**
-> 
-> Download exception report (blocked scans) as Excel file by date range.
-
-**Parameters**: start_date (query): string, end_date (query): string
+**Parameters**: start_date (query, optional): YYYY-MM-DD UTC day start; end_date (query, optional): YYYY-MM-DD UTC end of day inclusive
 
 ### `GET` `/admin/dashboard/stats`
 > **Admin Dashboard Stats**

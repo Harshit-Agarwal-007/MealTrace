@@ -248,9 +248,9 @@ Fallback for debugging: **GET /sites** (same host, vendor JWT).
 | Report | API | Client handling |
 |--------|-----|-----------------|
 | Weekly | **GET /admin/reports/weekly?start_date=** | Binary Excel — `blob` download |
-| Monthly | **GET /admin/reports/monthly?year=&month=** | Same |
-| Financial | **GET /admin/reports/financial** | Same |
-| Exception | **GET /admin/reports/exception?start_date=&end_date=** | Same |
+| Financial | **GET /admin/reports/financial?start_date=&end_date=** (optional; UTC dates) | Same |
+| Residents | **GET /admin/reports/residents** | Same |
+| Scan activity (success only) | **GET /admin/reports/scans?start_date=&end_date=&site_id=** | Same |
 
 Use `fetch` + `blob` + object URL; send `Authorization` header.
 
