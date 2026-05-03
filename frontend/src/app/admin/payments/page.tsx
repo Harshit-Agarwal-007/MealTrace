@@ -520,13 +520,18 @@ export default function AdminPaymentsPage() {
                   className="pl-8 w-full bg-white border border-slate-200 rounded-xl py-3 px-4 text-sm text-slate-900 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all"
                 />
               </div>
-              <div className="flex gap-2 mt-2">
+              <div className="mt-2 flex flex-wrap gap-2">
                 {[5, 10, 15, 30].map((n) => (
                   <button
                     key={n}
                     type="button"
-                    onClick={() => setCrForm((f) => ({ ...f, amount: String(n) }))}
-                    className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 transition-colors"
+                    onClick={() =>
+                      setCrForm((f) => ({
+                        ...f,
+                        amount: String((parseInt(f.amount, 10) || 0) + n),
+                      }))
+                    }
+                    className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
                   >
                     +{n}
                   </button>
@@ -535,8 +540,13 @@ export default function AdminPaymentsPage() {
                   <button
                     key={n}
                     type="button"
-                    onClick={() => setCrForm((f) => ({ ...f, amount: String(n) }))}
-                    className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 transition-colors"
+                    onClick={() =>
+                      setCrForm((f) => ({
+                        ...f,
+                        amount: String((parseInt(f.amount, 10) || 0) + n),
+                      }))
+                    }
+                    className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-[11px] font-bold text-red-700 transition-colors hover:bg-red-100"
                   >
                     {n}
                   </button>

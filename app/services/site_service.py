@@ -13,6 +13,33 @@ from app.models.site import SiteInfo, SiteListResponse
 logger = logging.getLogger(__name__)
 
 
+def _site_info_from_doc(doc_id: str, data: dict) -> SiteInfo:
+    meal_windows = {}
+    for meal_type, window in (data.get("meal_windows") or {}).items():
+        meal_windows[meal_type] = {
+            "start": window.get("start", ""),
+            "end": window.get("end", ""),
+        }
+    gp = data.get("guest_pass_price_inr")
+    if gp is not None:
+        try:
+            gp = int(gp)
+        except (TypeError, ValueError):
+            gp = None
+    return SiteInfo(
+        id=doc_id,
+        name=data.get("name", ""),
+        meal_windows=meal_windows,
+        vendor_staff_ids=data.get("vendor_staff_ids", []),
+        is_active=data.get("is_active", True),
+        created_at=data.get("created_at"),
+        resident_plans_enabled=data.get("resident_plans_enabled", True),
+        resident_guest_pass_enabled=data.get("resident_guest_pass_enabled", True),
+        guest_pass_price_inr=gp,
+        hidden_plan_ids=list(data.get("hidden_plan_ids") or []),
+    )
+
+
 def list_sites() -> SiteListResponse:
     """List all sites with meal window config."""
     db = get_db()
@@ -20,24 +47,8 @@ def list_sites() -> SiteListResponse:
 
     sites = []
     for doc in docs:
-        data = doc.to_dict()
-        # Convert meal_windows from nested dict
-        meal_windows = {}
-        raw_windows = data.get("meal_windows", {})
-        for meal_type, window in raw_windows.items():
-            meal_windows[meal_type] = {
-                "start": window.get("start", ""),
-                "end": window.get("end", ""),
-            }
-
-        sites.append(SiteInfo(
-            id=doc.id,
-            name=data.get("name", ""),
-            meal_windows=meal_windows,
-            vendor_staff_ids=data.get("vendor_staff_ids", []),
-            is_active=data.get("is_active", True),
-            created_at=data.get("created_at"),
-        ))
+        data = doc.to_dict() or {}
+        sites.append(_site_info_from_doc(doc.id, data))
 
     return SiteListResponse(sites=sites, total=len(sites))
 
@@ -49,22 +60,8 @@ def get_site(site_id: str) -> Optional[SiteInfo]:
     if not doc.exists:
         return None
 
-    data = doc.to_dict()
-    meal_windows = {}
-    for meal_type, window in data.get("meal_windows", {}).items():
-        meal_windows[meal_type] = {
-            "start": window.get("start", ""),
-            "end": window.get("end", ""),
-        }
-
-    return SiteInfo(
-        id=doc.id,
-        name=data.get("name", ""),
-        meal_windows=meal_windows,
-        vendor_staff_ids=data.get("vendor_staff_ids", []),
-        is_active=data.get("is_active", True),
-        created_at=data.get("created_at"),
-    )
+    data = doc.to_dict() or {}
+    return _site_info_from_doc(doc.id, data)
 
 
 def create_site(name: str, meal_windows: dict, vendor_staff_ids: list = None) -> SiteInfo:
@@ -90,11 +87,15 @@ def create_site(name: str, meal_windows: dict, vendor_staff_ids: list = None) ->
         "vendor_staff_ids": vendor_staff_ids or [],
         "is_active": True,
         "created_at": now,
+        "resident_plans_enabled": True,
+        "resident_guest_pass_enabled": True,
+        "guest_pass_price_inr": None,
+        "hidden_plan_ids": [],
     }
 
     db.collection("sites").document(site_id).set(doc_data)
 
-    return SiteInfo(id=site_id, **doc_data)
+    return get_site(site_id)
 
 
 def update_site(site_id: str, updates: dict) -> Optional[SiteInfo]:

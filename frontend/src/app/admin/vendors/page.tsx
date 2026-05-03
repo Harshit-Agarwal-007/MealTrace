@@ -11,7 +11,7 @@ import { Plus, Store, Loader2, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/apiClient";
 
-interface Vendor { id: string; user_id: string; assigned_site_ids: string[]; }
+interface Vendor { id: string; name: string; email: string; assigned_site_ids: string[]; status: string; }
 
 export default function AdminVendors() {
   const [vendors, setVendors] = useState<Vendor[]>([]);
@@ -46,10 +46,11 @@ export default function AdminVendors() {
                        <div className="bg-orange-50 p-2.5 rounded-xl text-orange-500">
                           <Store className="w-5 h-5"/>
                        </div>
-                       <div>
-                          <p className="font-bold text-slate-900">{v.user_id}</p>
-                          <p className="text-slate-500 text-[10px] uppercase font-bold mt-0.5">{v.assigned_site_ids.length} Assigned Sites</p>
-                       </div>
+                        <div>
+                           <p className="font-bold text-slate-900">{v.name || v.id}</p>
+                           <p className="text-slate-500 text-xs mt-0.5">{v.email}</p>
+                           <p className="text-slate-400 text-[10px] uppercase font-bold mt-0.5">{v.assigned_site_ids.length} Assigned Sites</p>
+                        </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-orange-500" />
                  </div>

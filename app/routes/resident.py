@@ -10,6 +10,8 @@ GET   /resident/transactions   — Paginated scan history
 GET   /resident/subscription   — Current plan subscription details
 POST  /resident/subscribe      — Subscribe to a meal plan with selected meals
 GET   /resident/guest-passes   — List of all guest passes (active + used)
+GET   /resident/notifications  — In-app notification feed
+PATCH /resident/notifications/{id}/read — Mark one notification read
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -23,8 +25,12 @@ from app.models.resident import (
     GuestPassInfo,
     QRCodeResponse,
     TransactionListResponse,
+    ResidentNotificationItem,
+    ResidentNotificationListResponse,
+    ResidentCatalogResponse,
 )
-from app.middleware.auth import require_resident, require_resident_or_admin
+from app.models.common import APIResponse
+from app.middleware.auth import require_resident
 from app.services.resident_service import (
     get_profile,
     get_balance,
@@ -35,8 +41,25 @@ from app.services.resident_service import (
     update_self_profile,
     get_guest_passes,
 )
+from app.services.notification_service import (
+    list_resident_notifications,
+    mark_resident_notification_read,
+)
+from app.services.catalog_service import resident_catalog
 
 router = APIRouter(prefix="/resident", tags=["Resident"])
+
+
+@router.get("/catalog", response_model=ResidentCatalogResponse)
+async def resident_store_catalog(current_user: dict = Depends(require_resident)):
+    """
+    Meal plans and guest-pass offer visible to this resident (site + global rules).
+    """
+    user_id = current_user["sub"]
+    cat = resident_catalog(user_id)
+    if cat is None:
+        raise HTTPException(status_code=404, detail="Resident profile not found")
+    return cat
 
 
 @router.get("/profile", response_model=ResidentProfile)
@@ -148,3 +171,27 @@ async def resident_guest_passes(
     """
     user_id = current_user["sub"]
     return get_guest_passes(user_id)
+
+
+@router.get("/notifications", response_model=ResidentNotificationListResponse)
+async def resident_notifications(
+    page_size: int = Query(50, ge=1, le=100),
+    current_user: dict = Depends(require_resident),
+):
+    """In-app notifications (e.g. admin broadcasts)."""
+    user_id = current_user["sub"]
+    raw = list_resident_notifications(user_id, limit=page_size)
+    items = [ResidentNotificationItem(**row) for row in raw]
+    return ResidentNotificationListResponse(notifications=items)
+
+
+@router.patch("/notifications/{notification_id}/read", response_model=APIResponse)
+async def resident_notification_mark_read(
+    notification_id: str,
+    current_user: dict = Depends(require_resident),
+):
+    user_id = current_user["sub"]
+    ok = mark_resident_notification_read(user_id, notification_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    return APIResponse(status="success", message="Marked as read")

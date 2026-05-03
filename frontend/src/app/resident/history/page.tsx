@@ -16,6 +16,15 @@ import { Utensils, CheckCircle2, XCircle, RefreshCw, Loader2 } from "lucide-reac
 
 const PAGE_SIZE = 20;
 
+function mealLabel(raw: string | undefined | null): string {
+  if (!raw?.trim()) return "Meal window";
+  const u = raw.toUpperCase();
+  if (u === "BREAKFAST") return "Breakfast";
+  if (u === "LUNCH") return "Lunch";
+  if (u === "DINNER") return "Dinner";
+  return raw.replaceAll("_", " ");
+}
+
 function formatTime(iso: string): string {
   const d = new Date(iso);
   const now = new Date();
@@ -81,13 +90,18 @@ export default function ResidentHistory() {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="text-white mb-6 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between text-slate-900">
         <div>
-          <h1 className="text-2xl font-bold">History</h1>
-          <p className="text-indigo-100 text-sm">Your recent meal scans</p>
+          <h1 className="text-2xl font-bold tracking-tight">History</h1>
+          <p className="text-sm text-slate-600">Your recent meal scans</p>
         </div>
-        <button onClick={() => fetchPage(1)} className="bg-white/10 p-2 rounded-full hover:bg-white/20 transition-colors">
-          <RefreshCw className="w-4 h-4 text-white" />
+        <button
+          type="button"
+          onClick={() => fetchPage(1)}
+          className="rounded-full border border-slate-200/80 bg-white/90 p-2.5 shadow-sm transition-colors hover:bg-slate-50"
+          aria-label="Refresh history"
+        >
+          <RefreshCw className="h-4 w-4 text-slate-600" />
         </button>
       </div>
 
@@ -125,18 +139,37 @@ export default function ResidentHistory() {
               } shadow-sm`}>
                 <Utensils className="w-5 h-5" />
               </div>
-              <div>
-                <h3 className="font-bold text-gray-900 leading-tight capitalize">
-                  {tx.meal_type?.toLowerCase() ?? "Meal"}
+              <div className="min-w-0 flex-1">
+                <h3 className="font-bold leading-tight text-gray-900">
+                  {mealLabel(tx.meal_type)}
                 </h3>
-                <p className="text-xs text-gray-500">
-                  {tx.site_name ?? tx.site_id ?? "—"} • {formatTime(tx.timestamp)}
+                <p className="mt-0.5 text-xs font-medium text-gray-600">
+                  <span className="text-gray-800">Site:</span> {tx.site_name ?? tx.site_id ?? "—"}
                 </p>
-                {tx.status === "BLOCKED" && tx.block_reason && (
-                  <p className="text-xs font-semibold text-red-500 mt-1 bg-red-50 inline-block px-1.5 py-0.5 rounded">
+                <p className="text-xs text-gray-500">{formatTime(tx.timestamp)}</p>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  {tx.is_guest_pass ? (
+                    <span className="inline-block rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700">
+                      Guest pass
+                    </span>
+                  ) : null}
+                  {tx.is_manual ? (
+                    <span className="inline-block rounded-md bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-800">
+                      Manual entry
+                    </span>
+                  ) : null}
+                </div>
+                {tx.description ? (
+                  <p className="mt-1 text-xs text-slate-600">
+                    <span className="font-semibold text-slate-700">Note:</span> {tx.description}
+                  </p>
+                ) : null}
+                {tx.block_reason ? (
+                  <p className="mt-1 inline-block rounded-md bg-red-50 px-2 py-1 text-xs font-semibold text-red-600">
+                    <span className="font-bold text-red-700">Reason:</span>{" "}
                     {tx.block_reason.replaceAll("_", " ")}
                   </p>
-                )}
+                ) : null}
               </div>
             </div>
             <div className="flex flex-col items-end shrink-0">

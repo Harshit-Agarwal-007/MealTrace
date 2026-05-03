@@ -79,13 +79,17 @@ def send_notification(
         logger.warning(f"No FCM token found for resident {resident_id}, skipping notification.")
         return False
 
-    notification_config = NOTIFICATION_TYPES.get(notification_type)
-    if not notification_config:
-        logger.error(f"Unknown notification type: {notification_type}")
-        return False
+    if notification_type == "ADMIN_BROADCAST":
+        title = (payload or {}).get("title", "Announcement")
+        body = (payload or {}).get("message", "")
+    else:
+        notification_config = NOTIFICATION_TYPES.get(notification_type)
+        if not notification_config:
+            logger.error(f"Unknown notification type: {notification_type}")
+            return False
 
-    title = notification_config["title"]
-    body = notification_config["body_template"].format(**payload)
+        title = notification_config["title"]
+        body = notification_config["body_template"].format(**payload)
 
     try:
         message = messaging.Message(

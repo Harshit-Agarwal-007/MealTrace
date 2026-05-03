@@ -10,6 +10,8 @@ POST /auth/forgot-password — Trigger Firebase password reset email
 POST /auth/fcm-token       — Update FCM device token
 """
 
+from typing import Optional
+
 from fastapi import APIRouter, HTTPException
 
 from app.models.auth import (
@@ -116,7 +118,8 @@ async def logout(current_user: dict = Depends(get_current_user)):
 
 
 class FCMTokenRequest(BaseModel):
-    fcm_token: str
+    """Send empty or null fcm_token to clear the token (disable push on this device)."""
+    fcm_token: Optional[str] = None
 
 
 @router.post("/fcm-token", response_model=APIResponse)
@@ -125,7 +128,7 @@ async def update_fcm(
     current_user: dict = Depends(get_current_user),
 ):
     """
-    Update the FCM device token for push notifications.
+    Update or clear the FCM device token for push notifications.
     Called after login or when the FCM token refreshes.
     """
     user_id = current_user["sub"]
@@ -133,7 +136,11 @@ async def update_fcm(
     if not success:
         raise HTTPException(status_code=404, detail="User not found")
 
-    return APIResponse(status="success", message="FCM token updated")
+    cleared = not (request.fcm_token or "").strip()
+    return APIResponse(
+        status="success",
+        message="Push token cleared" if cleared else "FCM token updated",
+    )
 
 
 @router.post("/change-password", response_model=AuthStatusResponse)

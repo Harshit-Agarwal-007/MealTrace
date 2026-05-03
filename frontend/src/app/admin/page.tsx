@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { UserPlus, Activity, Database, AlertCircle, LogOut, RefreshCw, Loader2 } from "lucide-react";
+import { UserPlus, Activity, Database, AlertCircle, LogOut, RefreshCw, Loader2, Bell } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/apiClient";
@@ -152,6 +152,25 @@ export default function AdminDashboard() {
         </div>
       </div>
 
+      <Link
+        href="/admin/broadcast"
+        className="flex w-full items-center justify-between rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white shadow-lg shadow-blue-600/20 transition-all hover:-translate-y-0.5 active:scale-[0.98]"
+      >
+        <span className="flex items-center gap-2 text-sm font-bold">
+          <Bell className="h-5 w-5 opacity-90" />
+          Send push / in-app broadcast
+        </span>
+        <span className="text-xs font-semibold opacity-90">Open</span>
+      </Link>
+
+      <Link
+        href="/admin/consumer"
+        className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-6 py-4 text-slate-900 shadow-sm transition-all hover:-translate-y-0.5 hover:border-indigo-200 active:scale-[0.98]"
+      >
+        <span className="text-sm font-bold">Resident store (plans &amp; guest pass)</span>
+        <span className="text-xs font-semibold text-indigo-600">Global + per-site</span>
+      </Link>
+
       {/* Global Search */}
       <div className="relative">
         <svg xmlns="http://www.w3.org/2000/svg" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -269,14 +288,6 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      {/* Broadcast shortcut */}
-      <Link
-        href="/admin/broadcast"
-        className="w-full flex items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-4 rounded-2xl shadow-lg shadow-blue-600/20 hover:-translate-y-0.5 transition-all active:scale-[0.98]"
-      >
-        <span className="font-bold text-sm">Send Push Notification</span>
-        <Activity className="w-5 h-5 opacity-80" />
-      </Link>
     </div>
   );
 }

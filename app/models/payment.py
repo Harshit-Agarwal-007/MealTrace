@@ -1,7 +1,7 @@
 # app/models/payment.py
 """Payment and plan schemas."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
 
@@ -18,6 +18,7 @@ class PlanInfo(BaseModel):
     price: int  # in INR (₹)
     description: Optional[str] = None
     is_active: bool = True
+    excluded_site_ids: List[str] = Field(default_factory=list)
 
 
 class CreatePlanRequest(BaseModel):
@@ -28,6 +29,7 @@ class CreatePlanRequest(BaseModel):
     duration_days: int = 30
     price: int  # in INR
     description: Optional[str] = None
+    excluded_site_ids: List[str] = Field(default_factory=list)
 
 
 class UpdatePlanRequest(BaseModel):
@@ -39,6 +41,7 @@ class UpdatePlanRequest(BaseModel):
     price: Optional[int] = None
     description: Optional[str] = None
     is_active: Optional[bool] = None
+    excluded_site_ids: Optional[List[str]] = None
 
 
 class ActivePlanResponse(BaseModel):
@@ -113,6 +116,10 @@ class GuestPassPurchaseRequest(BaseModel):
     """Purchase a single-use guest QR pass (₹100 for one out-of-plan meal)."""
     site_id: str
     meal_type: Optional[str] = None  # If specific meal, else any
+    # Required for residents after Razorpay checkout (server verifies signature + pending order).
+    razorpay_order_id: Optional[str] = None
+    razorpay_payment_id: Optional[str] = None
+    razorpay_signature: Optional[str] = None
 
 
 class GuestPassResponse(BaseModel):

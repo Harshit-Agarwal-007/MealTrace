@@ -5,6 +5,8 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, List
 from datetime import datetime
 
+from app.models.payment import PlanInfo
+
 
 # ── Responses ──
 
@@ -27,6 +29,7 @@ class ResidentProfile(BaseModel):
     plan_expiry: Optional[datetime] = None
     dietary_preference: str = "VEG"
     created_at: Optional[datetime] = None
+    push_notifications_enabled: bool = True
 
 
 class ResidentBalance(BaseModel):
@@ -50,6 +53,21 @@ class SubscriptionInfo(BaseModel):
     status: str = "NONE"  # NONE, ACTIVE, EXPIRED
 
 
+class ResidentGuestPassCatalog(BaseModel):
+    """Guest pass offer for the authenticated resident's site."""
+
+    enabled: bool
+    price_inr: int
+
+
+class ResidentCatalogResponse(BaseModel):
+    """Filtered plans + guest pass flags for the resident app."""
+
+    plans_purchase_enabled: bool
+    plans: List[PlanInfo]
+    guest_pass: ResidentGuestPassCatalog
+
+
 class TransactionRecord(BaseModel):
     """Single transaction/scan log entry."""
     id: str
@@ -59,6 +77,8 @@ class TransactionRecord(BaseModel):
     status: str  # SUCCESS, BLOCKED
     block_reason: Optional[str] = None
     is_guest_pass: bool = False
+    is_manual: bool = False
+    description: Optional[str] = None
     timestamp: datetime
 
 
@@ -109,6 +129,7 @@ class UpdateSelfProfileRequest(BaseModel):
     phone: Optional[str] = None
     room_number: Optional[str] = None
     dietary_preference: Optional[str] = None
+    push_notifications_enabled: Optional[bool] = None
 
 
 class SubscribeRequest(BaseModel):
@@ -135,3 +156,17 @@ class ResidentListResponse(BaseModel):
     page: int
     page_size: int
     has_more: bool
+
+
+class ResidentNotificationItem(BaseModel):
+    """Single in-app notification for the resident feed."""
+    id: str
+    title: str
+    message: str
+    type: str
+    read: bool
+    created_at: datetime
+
+
+class ResidentNotificationListResponse(BaseModel):
+    notifications: List[ResidentNotificationItem]

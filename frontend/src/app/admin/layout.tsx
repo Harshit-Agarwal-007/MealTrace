@@ -1,7 +1,7 @@
 "use client";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
-import { LayoutDashboard, Users, Map, IndianRupee, Store } from "lucide-react";
+import { LayoutDashboard, Users, Map, IndianRupee, Store, Bell } from "lucide-react";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -12,11 +12,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {children}
       </main>
       
-      <nav className="fixed bottom-0 w-full bg-white/90 backdrop-blur-xl border-t border-slate-200 px-2 py-4 pb-safe flex justify-around items-center z-50">
-        <NavItem href="/admin" icon={<LayoutDashboard />} label="Dashboard" active={pathname === "/admin"} />
-        <NavItem href="/admin/residents" icon={<Users />} label="Residents" active={pathname?.startsWith("/admin/residents")} />
+      <nav className="fixed bottom-0 z-50 flex w-full items-center justify-around border-t border-slate-200 bg-white/90 px-1 py-3 pb-safe backdrop-blur-xl">
+        <NavItem href="/admin" icon={<LayoutDashboard />} label="Home" active={pathname === "/admin"} />
+        <NavItem href="/admin/broadcast" icon={<Bell />} label="Push" active={pathname?.startsWith("/admin/broadcast")} />
+        <NavItem href="/admin/residents" icon={<Users />} label="People" active={pathname?.startsWith("/admin/residents")} />
         <NavItem href="/admin/vendors" icon={<Store />} label="Vendors" active={pathname?.startsWith("/admin/vendors")} />
-        <NavItem href="/admin/payments" icon={<IndianRupee />} label="Payments" active={pathname?.startsWith("/admin/payments")} />
+        <NavItem href="/admin/payments" icon={<IndianRupee />} label="Pay" active={pathname?.startsWith("/admin/payments")} />
         <NavItem href="/admin/sites" icon={<Map />} label="Sites" active={pathname?.startsWith("/admin/sites")} />
       </nav>
     </div>

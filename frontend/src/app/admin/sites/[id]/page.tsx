@@ -1,13 +1,20 @@
 "use client";
 
 import { useState, useEffect, useCallback, use } from "react";
-import { 
-  ArrowLeft, Clock, Save, Loader2, MapPin, 
-  CheckCircle2, AlertTriangle, RefreshCw 
+import {
+  ArrowLeft,
+  Clock,
+  Save,
+  Loader2,
+  MapPin,
+  CheckCircle2,
+  AlertTriangle,
+  RefreshCw,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/apiClient";
-import type { SiteInfo } from "@/lib/types";
+import type { PlanInfo, SiteInfo } from "@/lib/types";
 
 // Local types for the scan feed
 interface SiteScanFeed {
@@ -30,6 +37,7 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
   
   const [site, setSite] = useState<SiteInfo | null>(null);
   const [feed, setFeed] = useState<SiteScanFeed | null>(null);
+  const [allPlans, setAllPlans] = useState<PlanInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,12 +45,14 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
 
   const fetchData = useCallback(async () => {
     try {
-      const [siteData, feedData] = await Promise.all([
+      const [siteData, feedData, plansData] = await Promise.all([
         api.get<SiteInfo>(`/sites/${id}`),
-        api.get<SiteScanFeed>(`/admin/sites/${id}/live-scans?hours=24`)
+        api.get<SiteScanFeed>(`/admin/sites/${id}/live-scans?hours=24`),
+        api.get<PlanInfo[]>("/admin/plans"),
       ]);
       setSite(siteData);
       setFeed(feedData);
+      setAllPlans(Array.isArray(plansData) ? plansData : []);
     } catch (err: any) {
       setError(err.message || "Failed to load site data");
     } finally {
@@ -63,7 +73,11 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
       await api.patch(`/sites/${id}`, {
         name: site.name,
         is_active: site.is_active,
-        meal_windows: site.meal_windows
+        meal_windows: site.meal_windows,
+        resident_plans_enabled: site.resident_plans_enabled ?? true,
+        resident_guest_pass_enabled: site.resident_guest_pass_enabled ?? true,
+        guest_pass_price_inr: site.guest_pass_price_inr ?? null,
+        hidden_plan_ids: site.hidden_plan_ids ?? [],
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -76,18 +90,25 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
 
   const updateMealWindow = (meal: string, field: "start" | "end", value: string) => {
     if (!site) return;
-    const windows = { ...site.meal_windows };
+    const windows = { ...(site.meal_windows ?? {}) };
     if (!windows[meal]) {
-       // Initialize window if missing
-       windows[meal] = { start: "00:00", end: "00:00" };
+      windows[meal] = { start: "00:00", end: "00:00" };
     }
-    windows[meal] = { ...windows[meal], [field]: value };
+    windows[meal] = { ...windows[meal]!, [field]: value };
     setSite({ ...site, meal_windows: windows });
   };
 
   const toggleSiteStatus = () => {
     if (!site) return;
     setSite({ ...site, is_active: !site.is_active });
+  };
+
+  const toggleHiddenPlan = (planId: string) => {
+    if (!site) return;
+    const cur = new Set(site.hidden_plan_ids ?? []);
+    if (cur.has(planId)) cur.delete(planId);
+    else cur.add(planId);
+    setSite({ ...site, hidden_plan_ids: Array.from(cur) });
   };
 
   if (loading) {
@@ -141,6 +162,16 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
       
       {/* Site Header Card */}
       <div className="bg-white rounded-[32px] p-6 shadow-sm border border-slate-200">
+         <Link
+           href={`/admin/sites/${id}/roster`}
+           className="mb-4 flex w-full items-center justify-between rounded-2xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm font-black text-indigo-800 transition-colors hover:bg-indigo-100"
+         >
+           <span className="flex items-center gap-2">
+             <Users className="h-5 w-5" />
+             Residents &amp; vendors at this site
+           </span>
+           <span className="text-xs font-bold opacity-80">Open</span>
+         </Link>
          <div className="flex justify-between items-start mb-4">
             <div className="flex-1 mr-4">
                <input 
@@ -162,6 +193,110 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
          </div>
       </div>
 
+      {/* Resident storefront (per site) */}
+      <div className="space-y-4">
+        <h2 className="ml-2 text-lg font-black text-slate-800">Resident storefront</h2>
+        <p className="px-2 text-xs font-medium text-slate-500">
+          Control meal-plan checkout and guest passes for this site. Global defaults live under{" "}
+          <Link href="/admin/consumer" className="font-bold text-indigo-600 underline">
+            Store settings
+          </Link>
+          .
+        </p>
+        <div className="space-y-3 rounded-[28px] border border-slate-200 bg-white p-5 shadow-sm">
+          <button
+            type="button"
+            onClick={() => site && setSite({ ...site, resident_plans_enabled: !(site.resident_plans_enabled ?? true) })}
+            className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+          >
+            <div>
+              <p className="text-sm font-black text-slate-900">Allow plan purchases</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Top-up plans in resident app</p>
+            </div>
+            <div
+              className={`relative h-6 w-12 shrink-0 rounded-full shadow-inner transition-colors ${
+                site.resident_plans_enabled ?? true ? "bg-emerald-500" : "bg-slate-300"
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-all ${
+                  site.resident_plans_enabled ?? true ? "right-0.5" : "left-0.5"
+                }`}
+              />
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              site && setSite({ ...site, resident_guest_pass_enabled: !(site.resident_guest_pass_enabled ?? true) })
+            }
+            className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+          >
+            <div>
+              <p className="text-sm font-black text-slate-900">Allow guest passes</p>
+              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Paid one-meal QR for residents</p>
+            </div>
+            <div
+              className={`relative h-6 w-12 shrink-0 rounded-full shadow-inner transition-colors ${
+                site.resident_guest_pass_enabled ?? true ? "bg-emerald-500" : "bg-slate-300"
+              }`}
+            >
+              <div
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-all ${
+                  site.resident_guest_pass_enabled ?? true ? "right-0.5" : "left-0.5"
+                }`}
+              />
+            </div>
+          </button>
+          <div>
+            <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-slate-400">
+              Guest pass price (INR, optional)
+            </label>
+            <input
+              type="number"
+              min={1}
+              placeholder="Use global default"
+              value={site.guest_pass_price_inr != null ? site.guest_pass_price_inr : ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                setSite({
+                  ...site,
+                  guest_pass_price_inr: v === "" ? null : Math.max(1, parseInt(v, 10) || 1),
+                });
+              }}
+              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+            />
+            <p className="mt-1 text-[10px] text-slate-400">Leave empty to use the global default from store settings.</p>
+          </div>
+          {allPlans.filter((p) => p.is_active !== false).length > 0 ? (
+            <div className="border-t border-slate-100 pt-4">
+              <p className="mb-2 text-xs font-bold text-slate-700">Hide specific plans at this site</p>
+              <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/50 p-3">
+                {allPlans
+                  .filter((p) => p.is_active !== false)
+                  .map((p) => {
+                    const hidden = (site.hidden_plan_ids ?? []).includes(p.id);
+                    return (
+                      <label key={p.id} className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-slate-800">
+                        <input
+                          type="checkbox"
+                          checked={hidden}
+                          onChange={() => toggleHiddenPlan(p.id)}
+                          className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                        />
+                        <span className="min-w-0 flex-1 truncate">
+                          {p.name}{" "}
+                          <span className="font-mono text-[10px] text-slate-400">({p.id})</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
       {/* Meal Windows Section */}
       <div className="space-y-4">
          <div className="flex items-center justify-between px-2">
@@ -176,7 +311,7 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
            { key: "LUNCH", label: "Lunch", color: "orange", iconColor: "text-orange-500", borderColor: "border-orange-100", bgColor: "bg-orange-500" },
            { key: "DINNER", label: "Dinner", color: "purple", iconColor: "text-purple-500", borderColor: "border-purple-100", bgColor: "bg-purple-500" }
          ].map((m) => {
-            const win = site.meal_windows[m.key] || { start: "00:00", end: "00:00" };
+            const win = (site.meal_windows ?? {})[m.key] ?? { start: "00:00", end: "00:00" };
             return (
               <div key={m.key} className={`bg-white p-5 rounded-[24px] border ${m.borderColor} shadow-sm relative overflow-hidden`}>
                 <div className={`absolute left-0 top-0 bottom-0 w-1.5 ${m.bgColor}`}></div>

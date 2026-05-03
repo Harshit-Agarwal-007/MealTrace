@@ -18,6 +18,16 @@ from app.services.auth_service import create_firebase_user_for_invite
 logger = logging.getLogger(__name__)
 
 
+def _display_name_from_vendor_data(data: dict, doc_id: str) -> str:
+    raw = (data.get("name") or "").strip()
+    if raw:
+        return raw
+    email = (data.get("email") or "").strip()
+    if email and "@" in email:
+        return email.split("@", 1)[0].replace(".", " ").title() or doc_id
+    return doc_id
+
+
 def _build_vendor_profile(doc_id: str, data: dict, db=None) -> VendorProfile:
     """Build a VendorProfile from Firestore document data."""
     assigned_site_ids = data.get("assigned_site_ids", [])
@@ -33,7 +43,7 @@ def _build_vendor_profile(doc_id: str, data: dict, db=None) -> VendorProfile:
 
     return VendorProfile(
         id=doc_id,
-        name=data.get("name", ""),
+        name=_display_name_from_vendor_data(data, doc_id),
         email=data.get("email", ""),
         phone=data.get("phone"),
         role="VENDOR",
@@ -271,13 +281,13 @@ def get_vendor_assigned_sites(vendor_id: str) -> list:
     return sites
 
 
-def vendor_search_residents(vendor_id: str, query: str) -> list:
+def vendor_search_residents(vendor_id: str, query: str, site_id: Optional[str] = None) -> list:
     """
     Search for a resident by name or phone/room_number for manual entry.
     Returns basic info (id, name, dietary preference) so vendor can log manual scan.
     """
     db = get_db()
-    
+
     vendor_doc = db.collection("admin_users").document(vendor_id).get()
     if not vendor_doc.exists:
         return []
@@ -285,31 +295,72 @@ def vendor_search_residents(vendor_id: str, query: str) -> list:
     if not assigned_site_ids:
         return []
 
-    # Firestore lacks OR/substring search; do client-side text filter
-    # on active residents scoped to vendor-assigned sites.
+    if site_id and site_id not in assigned_site_ids:
+        return []
+
+    site_filter = [site_id] if site_id else assigned_site_ids
+    site_name_cache: dict = {}
+
+    def site_label(sid: str) -> str:
+        if sid in site_name_cache:
+            return site_name_cache[sid]
+        sdoc = db.collection("sites").document(sid).get()
+        name = sdoc.to_dict().get("name", sid) if sdoc.exists else sid
+        site_name_cache[sid] = name
+        return name
+
     docs = db.collection("residents").where("status", "==", "ACTIVE").get()
-    
+
     q_lower = query.lower()
-    results = []
-    
+    q_digits = "".join(c for c in query if c.isdigit())
+    scored = []
+
     for doc in docs:
-        data = doc.to_dict()
-        n = data.get("name", "").lower()
-        r = data.get("room_number", "").lower()
-        p = data.get("phone", "")
-        
-        if data.get("site_id") not in assigned_site_ids:
+        data = doc.to_dict() or {}
+        res_site = data.get("site_id")
+        if res_site not in site_filter:
             continue
 
-        if q_lower in n or q_lower in r or q_lower in p:
-            results.append({
+        n = (data.get("name") or "").lower()
+        r = (data.get("room_number") or "").lower()
+        p = (data.get("phone") or "") or ""
+        p_digits = "".join(c for c in p if c.isdigit())
+        em = (data.get("email") or "").lower()
+
+        match = (
+            q_lower in n
+            or q_lower in r
+            or q_lower in p.lower()
+            or q_lower in em
+            or (q_digits and q_digits in p_digits)
+        )
+        if not match:
+            continue
+
+        if n.startswith(q_lower):
+            rank = 0
+        elif q_lower in n:
+            rank = 1
+        elif q_digits and q_digits in p_digits:
+            rank = 2
+        else:
+            rank = 3
+
+        scored.append((
+            rank,
+            (data.get("name") or "").lower(),
+            {
                 "id": doc.id,
                 "name": data.get("name"),
                 "room_number": data.get("room_number"),
+                "phone": data.get("phone"),
                 "dietary_preference": data.get("dietary_preference", "VEG"),
-                "site_id": data.get("site_id"),
+                "site_id": res_site,
+                "site_name": site_label(res_site) if res_site else None,
                 "plan_name": data.get("plan_name"),
-            })
-            
-    # Return at most 10 results
-    return results[:10]
+                "balance": data.get("balance", 0),
+            },
+        ))
+
+    scored.sort(key=lambda x: (x[0], x[1]))
+    return [row[2] for row in scored[:50]]

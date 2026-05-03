@@ -1,14 +1,27 @@
 "use client";
 
 import { useState, useEffect, useCallback, use } from "react";
-import { 
-  ChevronLeft, Save, Loader2, Mail, Phone, 
-  MapPin, Tag, CheckCircle2, AlertCircle, RefreshCw,
-  User as UserIcon, Calendar, IndianRupee
+import {
+  ChevronLeft,
+  Save,
+  Loader2,
+  Mail,
+  Phone,
+  MapPin,
+  Tag,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  User as UserIcon,
+  Calendar,
+  IndianRupee,
+  AlertTriangle,
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/apiClient";
-import type { ResidentProfile } from "@/lib/types";
+import type { PlanInfo, ResidentProfile, SubscriptionInfo } from "@/lib/types";
+
+const MEAL_OPTIONS = ["BREAKFAST", "LUNCH", "DINNER"] as const;
 
 export default function AdminResidentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -18,6 +31,13 @@ export default function AdminResidentDetailPage({ params }: { params: Promise<{ 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+
+  const [plans, setPlans] = useState<PlanInfo[]>([]);
+  const [plansLoading, setPlansLoading] = useState(true);
+  const [assignPlanId, setAssignPlanId] = useState("");
+  const [selectedMeals, setSelectedMeals] = useState<string[]>([]);
+  const [assignLoading, setAssignLoading] = useState(false);
+  const [assignMsg, setAssignMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   const fetchData = useCallback(async () => {
     try {
@@ -33,6 +53,62 @@ export default function AdminResidentDetailPage({ params }: { params: Promise<{ 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  useEffect(() => {
+    setPlansLoading(true);
+    api
+      .get<PlanInfo[]>("/admin/plans")
+      .then((list) => setPlans((Array.isArray(list) ? list : []).filter((p) => p.is_active !== false)))
+      .catch(() => setPlans([]))
+      .finally(() => setPlansLoading(false));
+  }, []);
+
+  useEffect(() => {
+    setSelectedMeals([]);
+    setAssignMsg(null);
+  }, [assignPlanId]);
+
+  const selectedPlan = plans.find((p) => p.id === assignPlanId);
+
+  const toggleMeal = (meal: string) => {
+    if (!selectedPlan) return;
+    setSelectedMeals((prev) => {
+      if (prev.includes(meal)) return prev.filter((m) => m !== meal);
+      if (prev.length >= selectedPlan.meals_per_day) return prev;
+      return [...prev, meal];
+    });
+  };
+
+  const handleAssignPlan = async () => {
+    if (!resident || !selectedPlan) {
+      setAssignMsg({ ok: false, text: "Choose a meal plan first." });
+      return;
+    }
+    if (selectedMeals.length !== selectedPlan.meals_per_day) {
+      setAssignMsg({
+        ok: false,
+        text: `Pick exactly ${selectedPlan.meals_per_day} meal slot(s) for this plan.`,
+      });
+      return;
+    }
+    setAssignLoading(true);
+    setAssignMsg(null);
+    try {
+      await api.post<SubscriptionInfo>(`/admin/residents/${resident.id}/subscribe`, {
+        plan_id: selectedPlan.id,
+        selected_meals: selectedMeals,
+      });
+      setAssignMsg({ ok: true, text: "Plan applied. Credits were added per plan rules." });
+      await fetchData();
+    } catch (err) {
+      setAssignMsg({
+        ok: false,
+        text: err instanceof Error ? err.message : "Could not apply plan.",
+      });
+    } finally {
+      setAssignLoading(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,6 +216,14 @@ export default function AdminResidentDetailPage({ params }: { params: Promise<{ 
           </div>
 
           <form className="space-y-6">
+            <div className="space-y-1.5">
+              <label className="pl-1 text-[10px] font-black uppercase tracking-widest text-slate-400">Site</label>
+              <div className="flex flex-col gap-1 rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                <span className="font-bold text-slate-900">{resident.site_name?.trim() || "—"}</span>
+                <span className="font-mono text-xs tracking-tight text-slate-500">{resident.site_id || "—"}</span>
+              </div>
+            </div>
+
             <div className="grid grid-cols-2 gap-6">
                <div className="space-y-1.5">
                   <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Room No.</label>
@@ -232,6 +316,102 @@ export default function AdminResidentDetailPage({ params }: { params: Promise<{ 
                 </div>
               )}
            </div>
+        </div>
+
+        {/* Admin: assign / change meal plan */}
+        <div className="rounded-[32px] border border-slate-200 bg-white p-8 shadow-sm">
+          <h3 className="mb-2 text-lg font-black tracking-wide text-slate-900">Meal plan (admin)</h3>
+          <p className="mb-4 text-xs font-medium text-slate-500">
+            Choose a plan and permitted meal times. This uses the same rules as resident checkout and{" "}
+            <strong>adds the plan&apos;s credits</strong> to the current balance.
+          </p>
+          <div className="mb-4 flex gap-2 rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs font-medium text-amber-900">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>Re-applying a plan stacks credits again. Use Payments → Adjust credits if you need a correction.</span>
+          </div>
+
+          {plansLoading ? (
+            <div className="flex justify-center py-6">
+              <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
+            </div>
+          ) : plans.length === 0 ? (
+            <p className="text-sm text-slate-500">No active plans. Create one under Admin → Plans.</p>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block pl-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  Plan
+                </label>
+                <select
+                  value={assignPlanId}
+                  onChange={(e) => setAssignPlanId(e.target.value)}
+                  className="w-full rounded-2xl border border-slate-100 bg-slate-50 py-3 px-4 font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="">Select a plan…</option>
+                  {plans.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — ₹{p.price} ({p.meals_per_day}/day, {p.meal_count} credits)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {selectedPlan && (
+                <>
+                  <div>
+                    <p className="mb-2 pl-1 text-[10px] font-black uppercase tracking-widest text-slate-400">
+                      Allowed meals ({selectedMeals.length} / {selectedPlan.meals_per_day} required)
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {MEAL_OPTIONS.map((m) => {
+                        const on = selectedMeals.includes(m);
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => toggleMeal(m)}
+                            className={`rounded-xl px-4 py-2 text-xs font-black uppercase transition-all ${
+                              on
+                                ? "bg-indigo-600 text-white shadow-md"
+                                : "border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={assignLoading || selectedMeals.length !== selectedPlan.meals_per_day}
+                    onClick={() => void handleAssignPlan()}
+                    className="w-full rounded-2xl bg-indigo-600 py-3.5 text-sm font-black text-white shadow-lg shadow-indigo-200 transition-all active:scale-[0.98] disabled:opacity-50"
+                  >
+                    {assignLoading ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <Loader2 className="h-4 w-4 animate-spin" /> Applying…
+                      </span>
+                    ) : (
+                      "Apply plan to resident"
+                    )}
+                  </button>
+                </>
+              )}
+
+              {assignMsg && (
+                <p
+                  className={`rounded-xl border px-3 py-2 text-center text-xs font-bold ${
+                    assignMsg.ok
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      : "border-red-200 bg-red-50 text-red-700"
+                  }`}
+                >
+                  {assignMsg.text}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Danger Zone */}

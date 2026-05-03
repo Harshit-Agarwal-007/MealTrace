@@ -31,6 +31,7 @@ POST    /admin/credit-override        — Manual credit add/deduct + reason
 GET     /admin/reports/weekly         — Excel — attendance
 GET     /admin/reports/monthly        — Monthly summary
 GET     /admin/reports/financial      — Payment transaction log
+GET     /admin/reports/residents      — Full residents roster (Excel)
 GET     /admin/reports/exception      — Blocked scan log by date range
 
 ── Dashboard ──
@@ -40,6 +41,7 @@ GET     /admin/dashboard/scan-feed    — Recent scan activity feed
 
 import csv
 import io
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 
@@ -69,6 +71,7 @@ from app.models.payment import (
     CreatePlanRequest,
     UpdatePlanRequest,
 )
+from app.models.consumer import ConsumerConfigResponse, ConsumerConfigUpdateRequest
 from app.models.common import APIResponse
 from app.middleware.auth import require_admin
 from app.services.resident_service import (
@@ -91,13 +94,17 @@ from app.services.vendor_service import (
     delete_vendor as deactivate_vendor,
 )
 from app.services.payment_service import credit_override
+from app.services.catalog_service import get_consumer_config, update_consumer_config
 from app.services.report_service import (
     generate_weekly_report,
     generate_monthly_report,
     generate_financial_report,
     generate_exception_report,
+    generate_residents_report,
 )
 from app.database import get_db
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
@@ -530,6 +537,20 @@ async def admin_financial_report(
     )
 
 
+@router.get("/reports/residents")
+async def admin_residents_report(
+    current_user: dict = Depends(require_admin),
+):
+    """Download full residents roster as Excel (all resident fields in report_service)."""
+    excel_bytes = generate_residents_report()
+
+    return StreamingResponse(
+        io.BytesIO(excel_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=residents_roster.xlsx"},
+    )
+
+
 @router.get("/reports/exception")
 async def admin_exception_report(
     start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
@@ -733,9 +754,36 @@ async def admin_list_plans(
             price=data.get("price", 0),
             description=data.get("description"),
             is_active=data.get("is_active", True),
+            excluded_site_ids=list(data.get("excluded_site_ids") or []),
         ))
 
     return plans
+
+
+@router.get("/consumer-config", response_model=ConsumerConfigResponse)
+async def admin_get_consumer_config(current_user: dict = Depends(require_admin)):
+    """Global toggles for resident plan purchases and guest passes (all sites)."""
+    c = get_consumer_config()
+    return ConsumerConfigResponse(
+        plans_globally_enabled=bool(c.get("plans_globally_enabled", True)),
+        guest_pass_globally_enabled=bool(c.get("guest_pass_globally_enabled", True)),
+        default_guest_pass_price_inr=int(c.get("default_guest_pass_price_inr") or 100),
+    )
+
+
+@router.patch("/consumer-config", response_model=ConsumerConfigResponse)
+async def admin_patch_consumer_config(
+    request: ConsumerConfigUpdateRequest,
+    current_user: dict = Depends(require_admin),
+):
+    """Update global storefront defaults."""
+    payload = {k: v for k, v in request.model_dump(exclude_unset=True).items() if v is not None}
+    merged = update_consumer_config(payload)
+    return ConsumerConfigResponse(
+        plans_globally_enabled=bool(merged.get("plans_globally_enabled", True)),
+        guest_pass_globally_enabled=bool(merged.get("guest_pass_globally_enabled", True)),
+        default_guest_pass_price_inr=int(merged.get("default_guest_pass_price_inr") or 100),
+    )
 
 
 @router.post("/plans", response_model=PlanInfo, status_code=201)
@@ -762,11 +810,22 @@ async def admin_create_plan(
         "description": request.description,
         "is_active": True,
         "created_at": now,
+        "excluded_site_ids": list(request.excluded_site_ids or []),
     }
 
     db.collection("plans").document(plan_id).set(doc_data)
 
-    return PlanInfo(id=plan_id, **doc_data)
+    return PlanInfo(
+        id=plan_id,
+        name=doc_data["name"],
+        meals_per_day=doc_data["meals_per_day"],
+        meal_count=doc_data["meal_count"],
+        duration_days=doc_data["duration_days"],
+        price=doc_data["price"],
+        description=doc_data.get("description"),
+        is_active=True,
+        excluded_site_ids=doc_data["excluded_site_ids"],
+    )
 
 
 @router.patch("/plans/{plan_id}", response_model=PlanInfo)
@@ -802,6 +861,7 @@ async def admin_update_plan(
         price=updated.get("price", 0),
         description=updated.get("description"),
         is_active=updated.get("is_active", True),
+        excluded_site_ids=list(updated.get("excluded_site_ids") or []),
     )
 
 
@@ -1030,6 +1090,7 @@ async def admin_broadcast_notification(
     Example: 'Dinner delayed by 30 minutes at North Wing'.
     """
     from app.utils.fcm_manager import send_notification
+    from app.services.notification_service import broadcast_in_app_notifications
 
     db = get_db()
 
@@ -1038,23 +1099,45 @@ async def admin_broadcast_notification(
     if request.site_id:
         query = query.where("site_id", "==", request.site_id)
 
-    residents = query.get()
-    sent_count = 0
-    failed_count = 0
+    residents = list(query.get())
+    resident_ids = [d.id for d in residents]
 
+    try:
+        stored_count = broadcast_in_app_notifications(
+            resident_ids,
+            request.title,
+            request.message,
+            "ADMIN_BROADCAST",
+        )
+    except Exception:
+        logger.exception("broadcast_in_app_notifications failed")
+        stored_count = 0
+
+    fcm_sent = 0
+    fcm_failed = 0
     for doc in residents:
         try:
-            send_notification(
+            if send_notification(
                 doc.id,
                 "ADMIN_BROADCAST",
                 {"title": request.title, "message": request.message},
-            )
-            sent_count += 1
+            ):
+                fcm_sent += 1
+            else:
+                fcm_failed += 1
         except Exception:
-            failed_count += 1
+            fcm_failed += 1
 
     return APIResponse(
         status="success",
-        message=f"Notification sent to {sent_count} residents. {failed_count} failed.",
-        data={"sent": sent_count, "failed": failed_count, "total": len(residents)},
+        message=(
+            f"Stored in-app for {stored_count} residents. "
+            f"Push delivered to {fcm_sent} devices ({fcm_failed} without token or failed)."
+        ),
+        data={
+            "stored": stored_count,
+            "fcm_sent": fcm_sent,
+            "fcm_failed": fcm_failed,
+            "total_residents": len(residents),
+        },
     )

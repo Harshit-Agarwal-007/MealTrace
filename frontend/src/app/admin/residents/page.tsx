@@ -41,7 +41,7 @@ export default function AdminResidents() {
   const handleExport = async () => {
     setDownloading(true);
     try {
-      const blob = await api.get<Blob>("/admin/reports/financial", { returnBlob: true } as any);
+      const blob = await api.get<Blob>("/admin/reports/residents", { returnBlob: true } as any);
       downloadBlob(blob, "residents_export.xlsx");
     } catch {
       alert("Failed to export");

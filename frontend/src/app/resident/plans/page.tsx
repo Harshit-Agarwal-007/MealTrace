@@ -11,10 +11,10 @@
  */
 
 import { useState, useEffect } from "react";
-import { CheckCircle2, ChevronLeft, CreditCard, Loader2 } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, CreditCard, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/apiClient";
-import type { PlanInfo, CreateOrderResponse } from "@/lib/types";
+import type { PlanInfo, CreateOrderResponse, ResidentCatalogResponse, ResidentProfile } from "@/lib/types";
 import { useRouter } from "next/navigation";
 
 // Extend Window interface for Razorpay
@@ -27,15 +27,40 @@ declare global {
 export default function PlansPage() {
   const router = useRouter();
   const [plans, setPlans] = useState<PlanInfo[]>([]);
+  const [plansPurchaseEnabled, setPlansPurchaseEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
+  const [profile, setProfile] = useState<ResidentProfile | null>(null);
 
   useEffect(() => {
-    api.get<PlanInfo[]>("/plans")
-       .then(setPlans)
-       .catch(() => {})
-       .finally(() => setLoading(false));
+    setLoadError(null);
+    Promise.all([
+      api.get<ResidentCatalogResponse>("/resident/catalog"),
+      api.get<ResidentProfile>("/resident/profile").catch(() => null),
+    ])
+      .then(([data, prof]) => {
+        if (prof) setProfile(prof);
+        setPlansPurchaseEnabled(data.plans_purchase_enabled ?? true);
+        setPlans(Array.isArray(data.plans) ? data.plans : []);
+      })
+      .catch((err) => {
+        setPlans([]);
+        const msg = err instanceof Error ? err.message : String(err);
+        const base =
+          typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL
+            ? process.env.NEXT_PUBLIC_API_URL
+            : "(defaults to http://localhost:8000)";
+        if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+          setLoadError(
+            `Cannot reach API (${base}). Run the backend, set NEXT_PUBLIC_API_URL in frontend/.env.local, and stay logged in.`
+          );
+        } else {
+          setLoadError(msg || "Could not load meal plans.");
+        }
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const loadRazorpayScript = () => {
@@ -70,8 +95,11 @@ export default function PlansPage() {
         name: "MealTrace Digital",
         description: "Meal Plan Purchase",
         order_id: order.order_id,
-        handler: function (response: any) {
-          // The backend webhook completes the transaction, but we can optimistically redirect
+        prefill: {
+          email: profile?.email || undefined,
+          contact: profile?.phone?.replace(/\D/g, "") || undefined,
+        },
+        handler: function () {
           router.push("/resident");
         },
         theme: {
@@ -101,8 +129,24 @@ export default function PlansPage() {
         <h1 className="text-2xl font-black text-slate-900">Meal Plans</h1>
       </div>
 
+      {loadError && (
+        <div className="mb-4 flex gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-amber-600" />
+          <span>{loadError}</span>
+        </div>
+      )}
+
       {loading ? (
         <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
+      ) : plans.length === 0 ? (
+        <div className="rounded-3xl border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
+          <p className="text-lg font-bold text-slate-900">No plans available</p>
+          <p className="mt-2 text-sm text-slate-500">
+            {plansPurchaseEnabled
+              ? "There are no active meal plans for your site right now. Please contact your administrator."
+              : "Plan purchases are turned off for your site. Please contact your administrator."}
+          </p>
+        </div>
       ) : (
         <div className="space-y-6">
           {plans.map((plan) => (
@@ -141,16 +185,27 @@ export default function PlansPage() {
         </div>
       )}
 
-      {/* Sticky Bottom Bar */}
-      <div className="fixed bottom-0 left-0 w-full bg-white border-t border-slate-100 p-4 pb-safe animate-in slide-in-from-bottom">
-         <button 
-           disabled={!selectedPlanId || processing}
-           onClick={handlePurchase}
-           className="w-full bg-indigo-600 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 disabled:opacity-50 disabled:scale-100 active:scale-95 transition-all shadow-lg shadow-indigo-200"
-         >
-            {processing ? <Loader2 className="w-5 h-5 animate-spin"/> : <><CreditCard className="w-5 h-5" /> Proceed to Pay</>}
-         </button>
-      </div>
+      {/* Sticky Bottom Bar — only when there is something to buy */}
+      {plans.length > 0 && (
+        <div className="fixed bottom-0 left-0 z-40 w-full border-t border-slate-100 bg-white p-4 pb-safe animate-in slide-in-from-bottom">
+          <button
+            disabled={!selectedPlanId || processing}
+            onClick={handlePurchase}
+            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-indigo-600 py-4 font-bold text-white shadow-lg shadow-indigo-200 transition-all active:scale-95 disabled:scale-100 disabled:opacity-50"
+          >
+            {processing ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <>
+                <CreditCard className="h-5 w-5" /> Proceed to Pay
+              </>
+            )}
+          </button>
+          {!selectedPlanId && (
+            <p className="mt-2 text-center text-xs font-medium text-slate-400">Select a plan above to continue</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }

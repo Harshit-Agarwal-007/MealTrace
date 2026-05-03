@@ -17,10 +17,11 @@ from app.models.payment import (
     CreditOverrideResponse,
     GuestPassResponse,
 )
-from app.utils.razorpay_client import create_order, verify_webhook_signature
+from app.utils.razorpay_client import create_order, verify_payment_signature, verify_webhook_signature
 from app.utils.qr_gen import generate_qr_payload, generate_qr_image_base64
 from app.utils.fcm_manager import send_notification
 from app.config import get_settings
+from app.services.notification_service import create_notification
 
 logger = logging.getLogger(__name__)
 
@@ -35,37 +36,52 @@ def create_payment_order(
     Create a Razorpay order for plan purchase or guest pass.
 
     For plans: looks up the plan price from Firestore.
-    For guest passes: uses a fixed price or override.
+    For guest passes: price is always taken from site + global catalog (ignores client override).
     """
+    from app.services.catalog_service import (
+        assert_guest_pass_purchasable,
+        assert_plan_purchasable,
+        guest_pass_price_inr_for_resident,
+    )
+
     db = get_db()
     settings = get_settings()
 
+    # Razorpay receipt: max 40 chars, unique — keep long ids in `notes` only.
+    receipt = f"mt_{uuid.uuid4().hex[:16]}"
+
     if guest_pass:
-        amount_inr = amount_override or 100  # ₹100 default guest pass price
-        receipt = f"guest_{resident_id}_{uuid.uuid4().hex[:8]}"
-        notes = {"type": "guest_pass", "resident_id": resident_id}
+        assert_guest_pass_purchasable(resident_id)
+        amount_inr = guest_pass_price_inr_for_resident(resident_id)
+        if amount_override is not None and int(amount_override) != int(amount_inr):
+            raise ValueError("Guest pass amount does not match the price for your site")
+        notes = {
+            "type": "guest_pass",
+            "resident_id": str(resident_id),
+        }
     else:
-        # Look up plan
+        assert_plan_purchasable(resident_id, plan_id)
         plan_doc = db.collection("plans").document(plan_id).get()
         if not plan_doc.exists:
             raise ValueError(f"Plan {plan_id} not found")
 
         plan = plan_doc.to_dict()
         amount_inr = plan["price"]
-        receipt = f"plan_{plan_id}_{resident_id}_{uuid.uuid4().hex[:8]}"
         notes = {
             "type": "plan_purchase",
-            "resident_id": resident_id,
-            "plan_id": plan_id,
+            "resident_id": str(resident_id),
+            "plan_id": str(plan_id),
             "meal_count": str(plan["meal_count"]),
         }
+
+    notes_str = {k: str(v) for k, v in notes.items()}
 
     # Create Razorpay order (amount in paise)
     order = create_order(
         amount_paise=amount_inr * 100,
         currency="INR",
         receipt=receipt,
-        notes=notes,
+        notes=notes_str,
     )
 
     expected_amount_paise = order["amount"]
@@ -225,6 +241,18 @@ def process_webhook(payload_body: bytes, signature: str, event_data: dict) -> bo
         except Exception as e:
             logger.warning(f"FCM notification failed (non-critical): {e}")
 
+        try:
+            create_notification(
+                resident_id,
+                "Payment successful",
+                f"{credits_added} meals added. New balance: {new_balance}."
+                if credits_added
+                else f"Payment recorded. Balance: {new_balance}.",
+                "PAYMENT_CONFIRMED",
+            )
+        except Exception:
+            pass
+
         return True
 
     except Exception as e:
@@ -289,6 +317,16 @@ def credit_override(
     except Exception:
         pass
 
+    try:
+        create_notification(
+            resident_id,
+            "Balance updated",
+            f"Manual credit change: {amount:+d}. New balance: {new_balance} meals.",
+            "CREDIT_OVERRIDE",
+        )
+    except Exception:
+        pass
+
     return CreditOverrideResponse(
         resident_id=resident_id,
         previous_balance=previous_balance,
@@ -300,16 +338,76 @@ def credit_override(
     )
 
 
+def _verify_guest_pass_checkout(
+    resident_id: str,
+    razorpay_order_id: str,
+    razorpay_payment_id: str,
+    razorpay_signature: str,
+) -> str:
+    """
+    Validate Razorpay checkout response and return Firestore payment document id.
+    Prevents issuing a guest pass without a successful payment for this order.
+    """
+    if not verify_payment_signature(razorpay_order_id, razorpay_payment_id, razorpay_signature):
+        raise ValueError("Invalid Razorpay payment signature")
+
+    db = get_db()
+    q = (
+        db.collection("payments")
+        .where("razorpay_order_id", "==", razorpay_order_id)
+        .limit(1)
+        .get()
+    )
+    docs = list(q)
+    if not docs:
+        raise ValueError("No matching payment order found for this checkout")
+
+    snap = docs[0]
+    pdata = snap.to_dict() or {}
+    if pdata.get("resident_id") != resident_id:
+        raise ValueError("Payment does not belong to this account")
+    if pdata.get("type") != "guest_pass":
+        raise ValueError("This order is not a guest pass purchase")
+    if pdata.get("guest_pass_issued_id"):
+        raise ValueError("A guest pass was already issued for this payment")
+
+    return snap.id
+
+
 def purchase_guest_pass(
     resident_id: str,
     site_id: str,
     meal_type: str = None,
+    razorpay_order_id: str = None,
+    razorpay_payment_id: str = None,
+    razorpay_signature: str = None,
+    skip_checkout_verification: bool = False,
 ) -> GuestPassResponse:
     """
     Issue a single-use guest QR pass.
     The guest pass is valid for 24 hours.
+
+    Residents must pass Razorpay checkout fields so the server can verify_payment_signature
+    and tie the pass to the pending Firestore payment row. Admins may skip verification.
     """
     from datetime import timedelta
+
+    from app.services.catalog_service import assert_guest_pass_purchasable
+
+    assert_guest_pass_purchasable(resident_id)
+
+    pay_doc_id = None
+    if not skip_checkout_verification:
+        if not razorpay_order_id or not razorpay_payment_id or not razorpay_signature:
+            raise ValueError(
+                "Razorpay checkout details are required: razorpay_order_id, razorpay_payment_id, razorpay_signature"
+            )
+        pay_doc_id = _verify_guest_pass_checkout(
+            resident_id,
+            razorpay_order_id.strip(),
+            razorpay_payment_id.strip(),
+            razorpay_signature.strip(),
+        )
 
     db = get_db()
     now = datetime.now(timezone.utc)
@@ -331,6 +429,12 @@ def purchase_guest_pass(
         "expiry_at": expiry,
         "created_at": now,
     })
+
+    if pay_doc_id:
+        db.collection("payments").document(pay_doc_id).update({
+            "guest_pass_issued_id": guest_id,
+            "razorpay_payment_id": razorpay_payment_id,
+        })
 
     # FCM notification
     try:

@@ -8,6 +8,8 @@ GET  /plans                   — Get available meal plans (with meals_per_day)
 POST /guest-pass/purchase     — Issue a single-use guest QR pass (₹100)
 """
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app.models.payment import (
@@ -21,7 +23,8 @@ from app.models.payment import (
     ActivePlanResponse,
 )
 from app.models.common import APIResponse
-from app.middleware.auth import require_resident, require_resident_or_admin, get_current_user
+from app.models.auth import UserRole
+from app.middleware.auth import require_resident, require_resident_or_admin
 from app.services.payment_service import (
     create_payment_order,
     process_webhook,
@@ -72,7 +75,10 @@ async def razorpay_webhook(request: Request):
     if not signature:
         raise HTTPException(status_code=400, detail="Missing signature header")
 
-    event_data = await request.json()
+    try:
+        event_data = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        raise HTTPException(status_code=400, detail="Invalid JSON body")
 
     success = process_webhook(body, signature, event_data)
     if not success:
@@ -97,7 +103,9 @@ async def list_plans():
 
     plans = []
     for doc in docs:
-        data = doc.to_dict()
+        data = doc.to_dict() or {}
+        if not data.get("is_active", True):
+            continue
         plans.append(PlanInfo(
             id=doc.id,
             name=data.get("name", ""),
@@ -106,6 +114,8 @@ async def list_plans():
             duration_days=data.get("duration_days", 30),
             price=data.get("price", 0),
             description=data.get("description"),
+            is_active=True,
+            excluded_site_ids=list(data.get("excluded_site_ids") or []),
         ))
 
     return plans
@@ -131,8 +141,13 @@ async def buy_guest_pass(
     Valid for 24 hours. Can be used for one meal scan.
     """
     user_id = current_user["sub"]
+    is_admin = current_user.get("role") == UserRole.SUPER_ADMIN.value
     return purchase_guest_pass(
         resident_id=user_id,
         site_id=request.site_id,
         meal_type=request.meal_type,
+        razorpay_order_id=request.razorpay_order_id,
+        razorpay_payment_id=request.razorpay_payment_id,
+        razorpay_signature=request.razorpay_signature,
+        skip_checkout_verification=is_admin,
     )

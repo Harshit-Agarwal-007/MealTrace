@@ -6,7 +6,9 @@ GET  /vendor/profile         — Vendor's own profile
 GET  /vendor/assigned-sites  — Sites assigned to this vendor (for site picker)
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.models.vendor import VendorProfile
 from app.middleware.auth import require_vendor
@@ -46,6 +48,7 @@ async def vendor_assigned_sites(current_user: dict = Depends(require_vendor)):
 @router.get("/search-user")
 async def vendor_search_user(
     query: str,
+    site_id: Optional[str] = Query(None, description="Restrict results to this site (must be assigned to vendor)"),
     current_user: dict = Depends(require_vendor),
 ):
     """
@@ -53,9 +56,9 @@ async def vendor_search_user(
     Returns basic info (Name, Room, Dietary Pref) to allow the vendor
     to grab the resident's ID and perform a manual log if they forgot their phone.
     """
-    if len(query) < 3:
-        raise HTTPException(status_code=400, detail="Search query must be at least 3 characters")
-        
+    if len(query) < 2:
+        raise HTTPException(status_code=400, detail="Search query must be at least 2 characters")
+
     user_id = current_user["sub"]
-    results = vendor_search_residents(user_id, query)
+    results = vendor_search_residents(user_id, query, site_id=site_id)
     return {"results": results, "count": len(results)}

@@ -9,13 +9,14 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/apiClient";
-import type { PlanInfo } from "@/lib/types";
+import type { PlanInfo, SiteInfo } from "@/lib/types";
 
 export default function AdminPlanEdit({ params }: { params: Promise<{id:string}> }) {
   const { id } = use(params);
   const router = useRouter();
   
   const [plan, setPlan] = useState<PlanInfo | null>(null);
+  const [sites, setSites] = useState<SiteInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
@@ -24,17 +25,22 @@ export default function AdminPlanEdit({ params }: { params: Promise<{id:string}>
 
   const fetchData = useCallback(async () => {
     try {
-      // Backend doesn't have a direct /admin/plans/{id} endpoint, 
-      // so we fetch all and find the match.
-      const plans = await api.get<PlanInfo[]>("/admin/plans");
-      const found = plans.find(p => p.id === id);
+      const [plans, sitesRes] = await Promise.all([
+        api.get<PlanInfo[]>("/admin/plans"),
+        api.get<{ sites: SiteInfo[] }>("/sites"),
+      ]);
+      setSites(sitesRes.sites ?? []);
+      const found = plans.find((p) => p.id === id);
       if (found) {
-        setPlan(found);
+        setPlan({
+          ...found,
+          excluded_site_ids: found.excluded_site_ids ?? [],
+        });
       } else {
         setError("Plan not found");
       }
-    } catch (err: any) {
-      setError(err.message || "Failed to load plan details");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load plan details");
     } finally {
       setLoading(false);
     }
@@ -58,7 +64,8 @@ export default function AdminPlanEdit({ params }: { params: Promise<{id:string}>
         meals_per_day: plan.meals_per_day,
         duration_days: plan.duration_days,
         description: plan.description,
-        is_active: plan.is_active
+        is_active: plan.is_active,
+        excluded_site_ids: plan.excluded_site_ids ?? [],
       });
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
@@ -200,9 +207,42 @@ export default function AdminPlanEdit({ params }: { params: Promise<{id:string}>
                      <option value={2}>2 Meals / Day</option>
                      <option value={3}>3 Meals / Day</option>
                   </select>
-               </div>
             </div>
          </div>
+         </div>
+
+         {sites.length > 0 && (
+           <div className="rounded-[28px] border border-slate-100 bg-white p-6 shadow-sm">
+             <h3 className="text-sm font-black text-slate-900">Hide plan on specific sites</h3>
+             <p className="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+               Residents on checked sites will not see this plan in the app
+             </p>
+             <div className="mt-4 max-h-52 space-y-2 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/60 p-3">
+               {sites.map((s) => {
+                 const excluded = (plan.excluded_site_ids ?? []).includes(s.id);
+                 return (
+                   <label key={s.id} className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-slate-800">
+                     <input
+                       type="checkbox"
+                       checked={excluded}
+                       onChange={() => {
+                         const cur = new Set(plan.excluded_site_ids ?? []);
+                         if (cur.has(s.id)) cur.delete(s.id);
+                         else cur.add(s.id);
+                         setPlan({ ...plan, excluded_site_ids: Array.from(cur) });
+                       }}
+                       className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                     />
+                     <span className="min-w-0 flex-1 truncate">
+                       {s.name}{" "}
+                       <span className="font-mono text-[10px] text-slate-400">({s.id})</span>
+                     </span>
+                   </label>
+                 );
+               })}
+             </div>
+           </div>
+         )}
 
          <div 
            onClick={() => setPlan({ ...plan, is_active: !plan.is_active })}

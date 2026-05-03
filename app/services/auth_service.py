@@ -329,25 +329,30 @@ def refresh_access_token(refresh_token_str: str) -> Optional[TokenResponse]:
     )
 
 
-def update_fcm_token(user_id: str, fcm_token: str) -> bool:
+def update_fcm_token(user_id: str, fcm_token: Optional[str]) -> bool:
     """
-    Store the FCM device token for a user so we can send push notifications.
-    Called after login or when the token refreshes on the client.
+    Store or clear the FCM device token for a user.
+    Empty / whitespace-only token removes the field (push disabled server-side).
     """
+    from google.cloud.firestore import DELETE_FIELD
+
     db = get_db()
     try:
+        token = (fcm_token or "").strip()
+        payload = {"fcm_token": token} if token else {"fcm_token": DELETE_FIELD}
+
         # Try residents first (most common)
         doc_ref = db.collection("residents").document(user_id)
         doc = doc_ref.get()
         if doc.exists:
-            doc_ref.update({"fcm_token": fcm_token})
+            doc_ref.update(payload)
             return True
 
         # Try admin_users
         doc_ref = db.collection("admin_users").document(user_id)
         doc = doc_ref.get()
         if doc.exists:
-            doc_ref.update({"fcm_token": fcm_token})
+            doc_ref.update(payload)
             return True
 
         return False

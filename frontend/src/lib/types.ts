@@ -30,11 +30,14 @@ export interface ResidentProfile {
   phone?: string;
   room_number: string;
   site_id: string;
+  site_name?: string | null;
   status: "ACTIVE" | "INACTIVE";
   dietary_preference: string;
   balance?: number;
   plan_id?: string;
   allowed_meals?: string[];
+  /** When false, server clears FCM token on next profile update from settings. */
+  push_notifications_enabled?: boolean;
 }
 
 export interface ResidentBalance {
@@ -65,6 +68,9 @@ export interface Transaction {
   status: "SUCCESS" | "BLOCKED";
   block_reason?: string;
   balance_after?: number;
+  is_guest_pass?: boolean;
+  is_manual?: boolean;
+  description?: string;
 }
 
 export interface TransactionListResponse {
@@ -100,6 +106,7 @@ export interface VendorProfile {
   email: string;
   phone?: string;
   assigned_site_ids: string[];
+  assigned_site_names?: string[];
   status: string;
 }
 
@@ -109,6 +116,14 @@ export interface SiteInfo {
   is_active: boolean;
   meal_windows?: Record<string, { start: string; end: string }>;
   vendor_staff_ids?: string[];
+  /** When false, residents at this site cannot purchase meal plans. */
+  resident_plans_enabled?: boolean;
+  /** When false, guest pass checkout is blocked for residents at this site. */
+  resident_guest_pass_enabled?: boolean;
+  /** Override INR price; omit/null uses global default from admin consumer config. */
+  guest_pass_price_inr?: number | null;
+  /** Plan document ids hidden for this site only. */
+  hidden_plan_ids?: string[];
 }
 
 export interface SearchResult {
@@ -119,6 +134,8 @@ export interface SearchResult {
   dietary_preference?: string;
   balance?: number;
   plan_name?: string;
+  site_id?: string;
+  site_name?: string;
 }
 
 // ── Scan ─────────────────────────────────────────────────────────────────────
@@ -143,6 +160,25 @@ export interface PlanInfo {
   price: number;
   description?: string;
   is_active?: boolean;
+  /** Residents on these site ids never see this plan in their catalog. */
+  excluded_site_ids?: string[];
+}
+
+export interface ResidentGuestPassCatalog {
+  enabled: boolean;
+  price_inr: number;
+}
+
+export interface ResidentCatalogResponse {
+  plans_purchase_enabled: boolean;
+  plans: PlanInfo[];
+  guest_pass: ResidentGuestPassCatalog;
+}
+
+export interface ConsumerConfigResponse {
+  plans_globally_enabled: boolean;
+  guest_pass_globally_enabled: boolean;
+  default_guest_pass_price_inr: number;
 }
 
 export interface CreateOrderResponse {

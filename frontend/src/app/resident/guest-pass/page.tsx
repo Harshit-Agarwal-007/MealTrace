@@ -11,6 +11,13 @@ import { QrCode, ArrowLeft, Loader2, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/apiClient";
 import Image from "next/image";
+import type { ResidentCatalogResponse, ResidentProfile } from "@/lib/types";
+
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}
 
 interface GuestPassResponse {
   id: string;
@@ -21,14 +28,51 @@ interface GuestPassResponse {
 
 export default function GuestPassPage() {
   const [loading, setLoading] = useState(false);
+  const [siteLoading, setSiteLoading] = useState(true);
   const [passData, setPassData] = useState<GuestPassResponse | null>(null);
   const [error, setError] = useState("");
   const [siteId, setSiteId] = useState("");
+  const [guestPassEnabled, setGuestPassEnabled] = useState(true);
+  const [priceInr, setPriceInr] = useState(100);
+  const [profile, setProfile] = useState<ResidentProfile | null>(null);
 
   useEffect(() => {
-    api.get<{ site_id: string }>("/resident/profile")
-      .then((profile) => setSiteId(profile.site_id))
-      .catch(() => setError("Unable to load resident site for guest pass."));
+    setSiteLoading(true);
+    setError("");
+    Promise.all([
+      api.get<ResidentProfile>("/resident/profile"),
+      api.get<ResidentCatalogResponse>("/resident/catalog"),
+    ])
+      .then(([profileData, catalog]) => {
+        setProfile(profileData);
+        setSiteId(profileData.site_id ?? "");
+        setGuestPassEnabled(catalog.guest_pass?.enabled ?? true);
+        setPriceInr(catalog.guest_pass?.price_inr ?? 100);
+        if (!profileData.site_id?.trim()) {
+          setError(
+            "Your account has no site assigned. Ask your administrator to assign you to a site before purchasing a guest pass."
+          );
+        } else if (catalog.guest_pass && !catalog.guest_pass.enabled) {
+          setError("Guest passes are not available for your site right now. Contact your administrator.");
+        } else {
+          setError("");
+        }
+      })
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : String(err);
+        const base =
+          typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL
+            ? process.env.NEXT_PUBLIC_API_URL
+            : "(not set — defaults to http://localhost:8000)";
+        if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+          setError(
+            `Cannot reach the API (${base}). Start the MealTrace backend, set NEXT_PUBLIC_API_URL in frontend/.env.local if it is not on localhost:8000, and ensure you are logged in.`
+          );
+        } else {
+          setError(msg || "Unable to load your profile.");
+        }
+      })
+      .finally(() => setSiteLoading(false));
   }, []);
 
   const loadRazorpayScript = () => {
@@ -66,14 +110,26 @@ export default function GuestPassPage() {
         name: "MealTrace Digital",
         description: "Guest Pass Purchase",
         order_id: order.order_id,
-        handler: async function (response: any) {
-             try {
-                // 3. Complete actual purchase to get QR
-                const res = await api.post<GuestPassResponse>("/guest-pass/purchase", { site_id: siteId });
-                setPassData(res);
-             } catch (err: any) {
-                setError(err.message || "Payment succeeded but failed to generate pass");
-             }
+        prefill: {
+          email: profile?.email || undefined,
+          contact: profile?.phone?.replace(/\D/g, "") || undefined,
+        },
+        handler: async function (response: {
+          razorpay_order_id: string;
+          razorpay_payment_id: string;
+          razorpay_signature: string;
+        }) {
+          try {
+            const res = await api.post<GuestPassResponse>("/guest-pass/purchase", {
+              site_id: siteId,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
+            setPassData(res);
+          } catch (err: unknown) {
+            setError(err instanceof Error ? err.message : "Payment succeeded but failed to generate pass");
+          }
         },
         theme: {
           color: "#4f46e5",
@@ -108,16 +164,30 @@ export default function GuestPassPage() {
              <QrCode className="w-10 h-10 text-indigo-600" />
           </div>
           <h2 className="text-xl font-bold text-slate-900 mb-2">Generate One-Time Pass</h2>
-          <p className="text-sm text-slate-500 mb-8">This will create a temporary QR code valid for a single meal. Flat rate of ₹100 will be charged.</p>
+          <p className="text-sm text-slate-500 mb-8">
+            This will create a temporary QR code valid for a single meal. Your site price is{" "}
+            <span className="font-bold text-slate-800">₹{priceInr}</span> (charged at checkout).
+          </p>
           
-          {error && <p className="text-red-500 text-sm font-bold mb-4">{error}</p>}
-          
-          <button 
-             onClick={handleGenerate}
-             className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-md shadow-indigo-200"
-             disabled={loading || !siteId}
+          {error && (
+            <p className="text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm font-semibold mb-4 text-left">
+              {error}
+            </p>
+          )}
+
+          <button
+            onClick={handleGenerate}
+            className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 disabled:opacity-60 transition-all shadow-md shadow-indigo-200"
+            disabled={loading || siteLoading || !siteId?.trim() || !guestPassEnabled}
+            title={!siteId?.trim() && !siteLoading ? "Site assignment required" : undefined}
           >
-             {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Generate Pass — ₹100"}
+            {siteLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : loading ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : (
+              `Generate Pass — ₹${priceInr}`
+            )}
           </button>
         </div>
       ) : (

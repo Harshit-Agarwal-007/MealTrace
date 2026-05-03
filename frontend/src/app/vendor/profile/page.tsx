@@ -1,6 +1,7 @@
 "use client";
+
 import { useAuth } from "@/context/AuthContext";
-import { UserCircle, LogOut, Mail, User, Key, Loader2, RefreshCw } from "lucide-react";
+import { UserCircle, LogOut, Mail, User, Key, Loader2, RefreshCw, MapPin } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/lib/apiClient";
@@ -13,10 +14,11 @@ export default function VendorProfile() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const primarySite = useMemo(() => {
+  const primarySiteLabel = useMemo(() => {
     if (!vendor?.assigned_site_ids?.length) return null;
-    const match = sites.find((s) => s.id === vendor.assigned_site_ids[0]);
-    return match?.name ?? vendor.assigned_site_ids[0];
+    const firstId = vendor.assigned_site_ids[0];
+    const match = sites.find((s) => s.id === firstId);
+    return { id: firstId, name: match?.name ?? firstId };
   }, [vendor, sites]);
 
   const fetchProfile = async () => {
@@ -41,86 +43,101 @@ export default function VendorProfile() {
   }, []);
 
   return (
-    <div className="p-6 pt-12 animate-in fade-in duration-500 h-[100dvh] overflow-y-auto pb-32 relative text-white">
-      <div className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold">Device Profile</h1>
+    <div className="relative min-h-[100dvh] overflow-y-auto bg-slate-50 px-6 pb-32 pt-10 text-slate-900 animate-in fade-in duration-500">
+      <div className="mb-8 flex items-center justify-between">
+        <h1 className="text-2xl font-black tracking-tight text-slate-900">Device Profile</h1>
         <button
+          type="button"
           onClick={() => void fetchProfile()}
-          className="bg-amber-500 text-neutral-950 px-5 py-2.5 rounded-xl text-sm font-black flex items-center gap-2 active:scale-95 transition-transform shadow-lg shadow-amber-500/20"
+          className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-indigo-500/25 transition-all active:scale-95 disabled:opacity-60"
           disabled={loading}
         >
-          {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />} Refresh
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          Refresh
         </button>
       </div>
-      
-      <div className="bg-neutral-800/80 p-6 rounded-[32px] border border-neutral-700/50 shadow-xl flex flex-col items-center justify-center space-y-4 mb-8">
-         <div className="w-20 h-20 bg-amber-500/20 rounded-full flex items-center justify-center border border-amber-500/30">
-            <UserCircle className="w-10 h-10 text-amber-500" />
-         </div>
+
+      <div className="mb-6 flex flex-col items-center rounded-[28px] border border-slate-200 bg-white p-8 shadow-sm">
+        <div className="flex h-20 w-20 items-center justify-center rounded-full border border-indigo-100 bg-indigo-50">
+          <UserCircle className="h-10 w-10 text-indigo-600" />
+        </div>
+        <p className="mt-3 text-center text-xs font-semibold uppercase tracking-widest text-slate-400">
+          Signed in as vendor
+        </p>
       </div>
 
       {error && (
-        <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4 mb-6 text-red-300 text-sm font-semibold">
+        <div className="mb-6 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
           {error}
         </div>
       )}
 
-      <div className="space-y-6">
-         {/* Edit Details */}
-         <div className="bg-neutral-800/50 p-5 rounded-[24px] border border-neutral-700/50 shadow-sm space-y-4 relative">
-            <h2 className="text-sm font-bold text-neutral-300 mb-2">Device Details</h2>
-            
+      <div className="space-y-4">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 className="mb-4 text-sm font-bold text-slate-900">Device details</h2>
+
+          <div className="space-y-4">
             <div>
-               <label className="text-xs text-neutral-500 font-bold tracking-wider uppercase mb-1.5 block">Kiosk Name</label>
-               <div className="relative">
-                 <User className="w-4 h-4 text-neutral-500 absolute left-3 top-3.5" />
-                 <input
-                   type="text"
-                   value={vendor?.name ?? ""}
-                   readOnly
-                   className="w-full pl-9 pr-3 py-3 bg-neutral-900 border border-neutral-700 rounded-xl text-white font-medium"
-                 />
-               </div>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                Kiosk name
+              </label>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  readOnly
+                  value={vendor?.name ?? ""}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-3 text-sm font-semibold text-slate-900 [color-scheme:light]"
+                />
+              </div>
             </div>
 
             <div>
-               <label className="text-xs text-neutral-500 font-bold tracking-wider uppercase mb-1.5 block">Contact Email</label>
-               <div className="relative">
-                 <Mail className="w-4 h-4 text-neutral-500 absolute left-3 top-3.5" />
-                 <input
-                   type="email"
-                   value={vendor?.email ?? ""}
-                   readOnly
-                   className="w-full pl-9 pr-3 py-3 bg-neutral-900 border border-neutral-700 rounded-xl text-white font-medium"
-                 />
-               </div>
+              <label className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-slate-500">
+                Contact email
+              </label>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="email"
+                  readOnly
+                  value={vendor?.email ?? ""}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-3 text-sm font-semibold text-slate-900 [color-scheme:light]"
+                />
+              </div>
             </div>
-         </div>
+          </div>
+        </div>
 
-         {/* Settings & Auth */}
-         <div className="space-y-3">
-             <div className="bg-neutral-800/50 p-5 rounded-2xl border border-neutral-700/50 flex justify-between items-center">
-                <span className="font-semibold text-neutral-300">Default Site</span>
-                <span className="text-amber-500 font-bold uppercase text-[10px] bg-neutral-900 px-3 py-1.5 rounded-full border border-neutral-700 tracking-wider">
-                  {primarySite ?? "Unassigned"}
-                </span>
-             </div>
+        <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+          <div className="flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-indigo-500" />
+            <span className="font-semibold text-slate-800">Default site</span>
+          </div>
+          <span className="max-w-[55%] truncate rounded-full border border-indigo-100 bg-indigo-50 px-3 py-1.5 text-right text-[10px] font-bold uppercase tracking-wide text-indigo-700">
+            {primarySiteLabel ? `${primarySiteLabel.name}` : "Unassigned"}
+          </span>
+        </div>
 
-             <Link href="/forgot-password" className="w-full bg-neutral-800/50 p-5 rounded-2xl border border-neutral-700/50 flex justify-between items-center hover:bg-neutral-700/50 transition-colors block">
-               <div className="flex items-center gap-4">
-                  <Key className="text-neutral-400 w-5 h-5" />
-                  <span className="font-semibold text-neutral-300">Change Password</span>
-               </div>
-             </Link>
-             
-             <button onClick={logout} className="w-full bg-red-500/10 border border-red-500/20 p-5 rounded-2xl flex items-center justify-between text-red-500 hover:bg-red-500/20 active:scale-[0.98] transition-all">
-                <div className="flex items-center gap-3">
-                   <LogOut className="text-red-500 w-5 h-5"/>
-                   <span className="font-bold text-sm">Log Out Session</span>
-                </div>
-             </button>
-         </div>
+        <Link
+          href="/forgot-password"
+          className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm transition-colors hover:bg-slate-50"
+        >
+          <div className="flex items-center gap-3">
+            <Key className="h-5 w-5 text-slate-400" />
+            <span className="font-semibold text-slate-800">Change password</span>
+          </div>
+        </Link>
+
+        <button
+          type="button"
+          onClick={logout}
+          className="flex w-full items-center gap-3 rounded-2xl border border-red-100 bg-red-50 px-5 py-4 text-left font-bold text-red-600 transition-all hover:bg-red-100 active:scale-[0.99]"
+        >
+          <LogOut className="h-5 w-5 shrink-0" />
+          <span className="text-sm">Log out session</span>
+        </button>
       </div>
     </div>
-  )
+  );
 }

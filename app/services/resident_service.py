@@ -52,6 +52,7 @@ def _build_resident_profile(doc_id: str, data: dict, db=None) -> ResidentProfile
         plan_expiry=data.get("plan_expiry"),
         dietary_preference=data.get("dietary_preference", "VEG"),
         created_at=data.get("created_at"),
+        push_notifications_enabled=data.get("push_notifications_enabled", True),
     )
 
 
@@ -235,8 +236,13 @@ def update_self_profile(resident_id: str, updates: dict) -> Optional[ResidentPro
         return None
 
     # Only allow safe fields
-    safe_fields = {"name", "phone", "room_number", "dietary_preference"}
+    safe_fields = {"name", "phone", "room_number", "dietary_preference", "push_notifications_enabled"}
     clean_updates = {k: v for k, v in updates.items() if v is not None and k in safe_fields}
+
+    if clean_updates.get("push_notifications_enabled") is False:
+        from google.cloud.firestore import DELETE_FIELD
+
+        clean_updates["fcm_token"] = DELETE_FIELD
 
     if clean_updates:
         doc_ref.update(clean_updates)
@@ -327,6 +333,8 @@ def get_transactions(
             status=data.get("status", ""),
             block_reason=data.get("block_reason"),
             is_guest_pass=data.get("is_guest_pass", False),
+            is_manual=data.get("is_manual", False),
+            description=data.get("description"),
             timestamp=data.get("timestamp", datetime.now(timezone.utc)),
         ))
 

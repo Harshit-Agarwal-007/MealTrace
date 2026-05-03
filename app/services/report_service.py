@@ -279,3 +279,46 @@ def generate_exception_report(
     wb.save(buffer)
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def generate_residents_report() -> bytes:
+    """
+    Full residents roster export.
+
+    Columns: ID | Name | Email | Phone | Room | Site | Status | Balance | Plan | Dietary | Created
+    """
+    db = get_db()
+
+    residents = db.collection("residents").get()
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Residents Roster"
+
+    headers = [
+        "Resident ID", "Name", "Email", "Phone", "Room Number",
+        "Site ID", "Status", "Balance", "Plan ID", "Dietary Preference", "Created At"
+    ]
+    _style_header(ws, headers)
+
+    row = 2
+    for doc in residents:
+        data = doc.to_dict()
+        ts = data.get("created_at")
+        ws.cell(row=row, column=1, value=doc.id)
+        ws.cell(row=row, column=2, value=data.get("name", ""))
+        ws.cell(row=row, column=3, value=data.get("email", ""))
+        ws.cell(row=row, column=4, value=data.get("phone", ""))
+        ws.cell(row=row, column=5, value=data.get("room_number", ""))
+        ws.cell(row=row, column=6, value=data.get("site_id", ""))
+        ws.cell(row=row, column=7, value=data.get("status", ""))
+        ws.cell(row=row, column=8, value=data.get("balance", 0))
+        ws.cell(row=row, column=9, value=data.get("plan_id", "") or "")
+        ws.cell(row=row, column=10, value=data.get("dietary_preference", "VEG"))
+        ws.cell(row=row, column=11, value=str(ts)[:19] if ts else "")
+        row += 1
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
