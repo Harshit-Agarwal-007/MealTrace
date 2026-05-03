@@ -16,7 +16,41 @@ def _consumer_defaults() -> Dict[str, Any]:
         "plans_globally_enabled": True,
         "guest_pass_globally_enabled": True,
         "default_guest_pass_price_inr": 100,
+        "default_guest_pass_validity_hours": 48,
     }
+
+
+def _clamp_hours(h: int) -> int:
+    return max(1, min(int(h), 8760))
+
+
+def resolve_guest_pass_validity_hours(consumer: Dict[str, Any], site_data: Optional[dict]) -> int:
+    """Effective validity (hours) for a new guest pass: global default, optionally overridden per site."""
+    base = _clamp_hours(int(consumer.get("default_guest_pass_validity_hours") or 48))
+    if not site_data:
+        return base
+    override = site_data.get("guest_pass_validity_hours")
+    if override is None:
+        return base
+    try:
+        return _clamp_hours(int(override))
+    except (TypeError, ValueError):
+        return base
+
+
+def guest_pass_validity_hours_for_resident(resident_id: str) -> int:
+    """Hours until expiry when issuing a guest pass for this resident."""
+    db = get_db()
+    consumer = get_consumer_config()
+    res_doc = db.collection("residents").document(resident_id).get()
+    if not res_doc.exists:
+        return _clamp_hours(int(consumer.get("default_guest_pass_validity_hours") or 48))
+    site_id = (res_doc.to_dict() or {}).get("site_id") or ""
+    if not site_id:
+        return resolve_guest_pass_validity_hours(consumer, None)
+    site_doc = db.collection("sites").document(site_id).get()
+    site_data = site_doc.to_dict() if site_doc and site_doc.exists else None
+    return resolve_guest_pass_validity_hours(consumer, site_data)
 
 
 def get_consumer_config() -> Dict[str, Any]:
@@ -118,10 +152,16 @@ def resident_catalog(resident_id: str) -> Optional[ResidentCatalogResponse]:
         except (TypeError, ValueError):
             price_inr = max(1, int(default_guest_inr))
 
+    validity_hours = resolve_guest_pass_validity_hours(consumer, site_data)
+
     return ResidentCatalogResponse(
         plans_purchase_enabled=plans_purchase_enabled,
         plans=plans_out,
-        guest_pass=ResidentGuestPassCatalog(enabled=guest_enabled, price_inr=price_inr),
+        guest_pass=ResidentGuestPassCatalog(
+            enabled=guest_enabled,
+            price_inr=price_inr,
+            validity_hours=validity_hours,
+        ),
     )
 
 

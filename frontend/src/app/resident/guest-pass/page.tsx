@@ -25,6 +25,15 @@ interface ActiveGuestPassView {
   expiry_at: string;
 }
 
+function formatValidityLabel(hours: number): string {
+  const h = Math.max(1, Math.round(hours));
+  if (h % 24 === 0) {
+    const d = h / 24;
+    return `${d} day${d === 1 ? "" : "s"}`;
+  }
+  return `${h} hour${h === 1 ? "" : "s"}`;
+}
+
 function pickActiveGuestPass(list: GuestPassInfo[]): GuestPassInfo | null {
   const now = Date.now();
   for (const p of list) {
@@ -44,6 +53,7 @@ export default function GuestPassPage() {
   const [siteId, setSiteId] = useState("");
   const [guestPassEnabled, setGuestPassEnabled] = useState(true);
   const [priceInr, setPriceInr] = useState(100);
+  const [validityHours, setValidityHours] = useState(48);
   const [profile, setProfile] = useState<ResidentProfile | null>(null);
 
   const hydrateActivePass = useCallback(async () => {
@@ -80,6 +90,7 @@ export default function GuestPassPage() {
         setSiteId(profileData.site_id ?? "");
         setGuestPassEnabled(catalog.guest_pass?.enabled ?? true);
         setPriceInr(catalog.guest_pass?.price_inr ?? 100);
+        setValidityHours(catalog.guest_pass?.validity_hours ?? 48);
         if (!profileData.site_id?.trim()) {
           setError(
             "Your account has no site assigned. Ask your administrator to assign you to a site before purchasing a guest pass."
@@ -224,11 +235,13 @@ export default function GuestPassPage() {
           <h2 className="mb-2 text-xl font-bold text-slate-900">Generate One-Time Pass</h2>
           <p className="mb-4 text-sm text-slate-500">
             This will create a temporary QR code valid for a single meal. Your site price is{" "}
-            <span className="font-bold text-slate-800">₹{priceInr}</span> (charged at checkout).
+            <span className="font-bold text-slate-800">₹{priceInr}</span> (charged at checkout). New passes stay valid
+            for <span className="font-bold text-slate-800">{formatValidityLabel(validityHours)}</span> from issue
+            (set by your administrator).
           </p>
           <p className="mb-8 text-xs font-medium leading-relaxed text-slate-500">
             After purchase, your guest pass QR stays on this page until it is <strong>used at a scan</strong> or{" "}
-            <strong>expires</strong> (24 hours). You can leave and come back — it is saved to your account.
+            <strong>expires</strong>. You can leave and come back — it is saved to your account.
           </p>
 
           {error && (
@@ -261,7 +274,7 @@ export default function GuestPassPage() {
           </div>
           <h2 className="mb-1 text-xl font-black text-slate-900">Your guest pass</h2>
           <p className="mb-2 text-sm font-medium text-slate-500">
-            {expiryLabel ? <>Valid until {expiryLabel}</> : "Valid for 24 hours from issue"}
+            {expiryLabel ? <>Valid until {expiryLabel}</> : <>Valid for {formatValidityLabel(validityHours)} from issue</>}
           </p>
           <p className="mb-8 text-xs leading-relaxed text-slate-500">
             This QR is stored on your account until the pass is used or expires. You can safely leave this screen and

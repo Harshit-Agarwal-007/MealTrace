@@ -24,6 +24,8 @@ class SiteInfo(BaseModel):
     resident_plans_enabled: bool = True
     resident_guest_pass_enabled: bool = True
     guest_pass_price_inr: Optional[int] = None  # None → use global default_guest_pass_price_inr
+    # None → use global default_guest_pass_validity_hours (default 48h)
+    guest_pass_validity_hours: Optional[int] = None
     hidden_plan_ids: List[str] = Field(default_factory=list)
 
 
@@ -43,6 +45,7 @@ class UpdateSiteRequest(BaseModel):
     resident_plans_enabled: Optional[bool] = None
     resident_guest_pass_enabled: Optional[bool] = None
     guest_pass_price_inr: Optional[int] = None
+    guest_pass_validity_hours: Optional[int] = None  # 1–8760 when set; omit/null = use global default
     hidden_plan_ids: Optional[List[str]] = None
 
 

@@ -4,7 +4,7 @@
  * Admin Dashboard — wiring doc §5.1
  *
  * GET /admin/dashboard/stats     → KPI cards
- * GET /admin/dashboard/scan-feed?limit=50 → live feed table
+ * GET /admin/dashboard/scan-feed?limit=25 → live feed table (capped; full export under /admin/reports)
  *
  * Refresh strategy (wiring doc §5.1 note — no WebSocket in Tier 1):
  *   Auto-poll every 15s + manual refresh button.
@@ -13,6 +13,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { UserPlus, Activity, Database, AlertCircle, LogOut, RefreshCw, Loader2, Bell } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/apiClient";
 import type { DashboardStats, ScanFeedEntry } from "@/lib/types";
@@ -67,6 +68,7 @@ function FeedRow({ scan }: { scan: ScanFeedEntry }) {
 
 export default function AdminDashboard() {
   const { logout } = useAuth();
+  const router = useRouter();
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [feed, setFeed] = useState<ScanFeedEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,7 +84,7 @@ export default function AdminDashboard() {
     try {
       const [statsData, feedData] = await Promise.all([
         api.get<DashboardStats>("/admin/dashboard/stats"),
-        api.get<{ feed: ScanFeedEntry[]; count: number }>("/admin/dashboard/scan-feed?limit=50"),
+        api.get<{ feed: ScanFeedEntry[]; count: number }>("/admin/dashboard/scan-feed?limit=25"),
       ]);
       setStats(statsData);
       setFeed(feedData.feed ?? []);
@@ -119,6 +121,18 @@ export default function AdminDashboard() {
     }, 500);
     return () => clearTimeout(t);
   }, [search]);
+
+  const openSearchResult = (r: { type?: string; id?: string }) => {
+    const t = (r.type || "").toLowerCase();
+    const id = r.id;
+    if (!id) return;
+    if (t === "resident") router.push(`/admin/residents/${id}`);
+    else if (t === "vendor") router.push(`/admin/vendors/${id}`);
+    else if (t === "site") router.push(`/admin/sites/${id}`);
+    else return;
+    setSearch("");
+    setSearchResults(null);
+  };
 
   return (
     <div className="p-6 pt-8 animate-in fade-in duration-500 space-y-6 pb-24">
@@ -193,14 +207,26 @@ export default function AdminDashboard() {
               <p className="p-4 text-center text-sm text-slate-400">No results found.</p>
             ) : (
               searchResults.map((r, i) => (
-                <div key={i} className="p-3 flex items-center gap-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer">
+                <div
+                  key={`${r.type}-${r.id}-${i}`}
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => openSearchResult(r)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openSearchResult(r);
+                    }
+                  }}
+                  className="p-3 flex items-center gap-3 border-b border-slate-50 last:border-0 hover:bg-slate-50 cursor-pointer text-left w-full"
+                >
                   <span className={`text-[10px] font-black px-2 py-1 rounded-full uppercase ${
                     r._type === "Resident" ? "bg-blue-50 text-blue-600" :
                     r._type === "Vendor" ? "bg-amber-50 text-amber-600" :
                     "bg-emerald-50 text-emerald-600"
                   }`}>{r._type}</span>
                   <span className="text-sm font-semibold text-slate-800">{r.name}</span>
-                  {r.email && <span className="text-xs text-slate-400">{r.email}</span>}
+                  {r.email && <span className="text-xs text-slate-400 truncate">{r.email}</span>}
                 </div>
               ))
             )}
@@ -268,6 +294,13 @@ export default function AdminDashboard() {
           </h2>
           <span className="text-xs text-slate-400 font-medium">Auto-refreshes every 15s</span>
         </div>
+        <p className="mb-3 text-[11px] font-medium text-slate-500">
+          Showing the latest 25 scans. All scans are stored; export the full log from{" "}
+          <Link href="/admin/reports" className="font-bold text-indigo-600 underline">
+            Reports → Scan activity
+          </Link>
+          .
+        </p>
 
         <div className="bg-white rounded-[24px] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-100 overflow-hidden divide-y divide-slate-50">
           {loading && Array.from({ length: 4 }).map((_, i) => (

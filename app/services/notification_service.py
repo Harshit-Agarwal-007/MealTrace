@@ -13,6 +13,7 @@ from app.database import get_db
 logger = logging.getLogger(__name__)
 
 NOTIFICATIONS_COLLECTION = "notifications"
+ADMIN_BROADCAST_LOG_COLLECTION = "admin_broadcast_log"
 _BATCH_SIZE = 400
 
 
@@ -132,3 +133,62 @@ def broadcast_in_app_notifications(
         batch.commit()
 
     return written
+
+
+def log_admin_broadcast(
+    admin_id: str,
+    title: str,
+    message: str,
+    site_id: Optional[str],
+    recipient_count: int,
+    stored_count: int,
+    fcm_sent: int,
+    fcm_failed: int,
+) -> str:
+    """Append one admin broadcast audit row. Returns new document id."""
+    db = get_db()
+    now = datetime.now(timezone.utc)
+    doc_ref = db.collection(ADMIN_BROADCAST_LOG_COLLECTION).document()
+    doc_ref.set({
+        "admin_id": admin_id,
+        "title": title,
+        "message": message,
+        "site_id": site_id,
+        "recipient_count": recipient_count,
+        "stored_count": stored_count,
+        "fcm_sent": fcm_sent,
+        "fcm_failed": fcm_failed,
+        "created_at": now,
+    })
+    return doc_ref.id
+
+
+def list_admin_broadcast_history(limit: int = 10) -> List[dict]:
+    """Newest-first audit log of admin broadcasts (single row per send)."""
+    db = get_db()
+    docs = (
+        db.collection(ADMIN_BROADCAST_LOG_COLLECTION)
+        .order_by("created_at", direction="DESCENDING")
+        .limit(limit)
+        .get()
+    )
+    out: List[dict] = []
+    for d in docs:
+        data = d.to_dict() or {}
+        ts = data.get("created_at")
+        if hasattr(ts, "isoformat"):
+            ts_out = ts.isoformat()
+        else:
+            ts_out = None
+        out.append({
+            "id": d.id,
+            "title": data.get("title", ""),
+            "message": data.get("message", ""),
+            "site_id": data.get("site_id"),
+            "recipient_count": int(data.get("recipient_count", 0)),
+            "stored_count": int(data.get("stored_count", 0)),
+            "fcm_sent": int(data.get("fcm_sent", 0)),
+            "fcm_failed": int(data.get("fcm_failed", 0)),
+            "created_at": ts_out,
+        })
+    return out

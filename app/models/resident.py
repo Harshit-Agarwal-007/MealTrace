@@ -58,6 +58,7 @@ class ResidentGuestPassCatalog(BaseModel):
 
     enabled: bool
     price_inr: int
+    validity_hours: int  # effective window for new passes (global default or site override)
 
 
 class ResidentCatalogResponse(BaseModel):
@@ -110,6 +111,8 @@ class CreateResidentRequest(BaseModel):
     site_id: str
     dietary_preference: str = "VEG"
     password: Optional[str] = None  # If None, admin invite flow sends setup email
+    plan_id: Optional[str] = None
+    selected_meals: Optional[List[str]] = None  # Required when plan_id is set; length must match plan.meals_per_day
 
 
 class UpdateResidentRequest(BaseModel):

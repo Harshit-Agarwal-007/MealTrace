@@ -33,6 +33,7 @@ GET     /admin/reports/monthly        — Monthly summary
 GET     /admin/reports/financial      — Payment transaction log
 GET     /admin/reports/residents      — Full residents roster (Excel)
 GET     /admin/reports/exception      — Blocked scan log by date range
+GET     /admin/reports/scans          — Full scan log (date range, optional site)
 
 ── Dashboard ──
 GET     /admin/dashboard/stats        — Live dashboard stats
@@ -101,6 +102,7 @@ from app.services.report_service import (
     generate_financial_report,
     generate_exception_report,
     generate_residents_report,
+    generate_scans_activity_report,
 )
 from app.database import get_db
 
@@ -153,8 +155,17 @@ async def admin_add_resident(
     Add an individual resident.
     Also creates a Firebase Auth account so the user can login.
     If no password provided, sends a password setup email.
+    Optional plan_id + selected_meals assigns a meal plan immediately after creation.
     """
-    return create_resident(
+    plan_id = (request.plan_id or "").strip() or None
+    selected_meals = request.selected_meals or []
+    if plan_id and not selected_meals:
+        raise HTTPException(
+            status_code=400,
+            detail="selected_meals is required when plan_id is set",
+        )
+
+    profile = create_resident(
         name=request.name,
         email=request.email,
         phone=request.phone,
@@ -162,6 +173,23 @@ async def admin_add_resident(
         site_id=request.site_id,
         password=request.password,
     )
+
+    if plan_id:
+        try:
+            subscribe_to_plan(profile.id, plan_id, selected_meals)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Resident {profile.id} was created but plan assignment failed: {e}. "
+                    "Assign a plan from the resident detail page."
+                ),
+            )
+        refreshed = get_resident_profile(profile.id)
+        if refreshed is not None:
+            profile = refreshed
+
+    return profile
 
 
 @router.post("/residents/bulk", response_model=APIResponse)
@@ -325,12 +353,14 @@ async def admin_site_residents(
 async def admin_site_live_scans(
     site_id: str,
     hours: int = Query(3, ge=1, le=24, description="Look back N hours"),
+    limit: int = Query(50, ge=1, le=200, description="Max rows returned (newest first); full history via reports"),
     current_user: dict = Depends(require_admin),
 ):
     """
     Recent scans at a specific site.
     Shows who has been eating at this site within the last N hours.
     Admin can click on a user to navigate to their CRUD page.
+    All scans are stored in ``scan_logs``; use GET /admin/reports/scans to export older rows.
     """
     db = get_db()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -382,7 +412,16 @@ async def admin_site_live_scans(
             "timestamp": str(data.get("timestamp")),
         })
 
-    return {"scans": results, "count": len(results), "site_id": site_id}
+    total_in_window = len(results)
+    capped = results[:limit]
+    return {
+        "scans": capped,
+        "count": len(capped),
+        "total_in_window": total_in_window,
+        "site_id": site_id,
+        "truncated": total_in_window > limit,
+        "limit": limit,
+    }
 
 
 # ═══════════════════════════════════════
@@ -574,6 +613,37 @@ async def admin_exception_report(
     )
 
 
+@router.get("/reports/scans")
+async def admin_scans_activity_report(
+    start_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD), UTC day start"),
+    end_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD), UTC end of day"),
+    site_id: Optional[str] = Query(None, description="Optional site filter"),
+    current_user: dict = Depends(require_admin),
+):
+    """
+    Download full scan activity (success + blocked) for a date range.
+    Use this for audit trails; admin live feeds return only the latest rows.
+    """
+    sd = None
+    ed = None
+    if start_date:
+        sd = datetime.fromisoformat(start_date).replace(tzinfo=timezone.utc)
+    if end_date:
+        day = datetime.fromisoformat(end_date).date()
+        ed = datetime(day.year, day.month, day.day, 23, 59, 59, tzinfo=timezone.utc)
+
+    if sd and ed and sd > ed:
+        raise HTTPException(status_code=400, detail="start_date must be on or before end_date")
+
+    excel_bytes = generate_scans_activity_report(start_date=sd, end_date=ed, site_id=site_id)
+
+    return StreamingResponse(
+        io.BytesIO(excel_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=scan_activity_report.xlsx"},
+    )
+
+
 # ═══════════════════════════════════════
 # DASHBOARD
 # ═══════════════════════════════════════
@@ -650,12 +720,12 @@ async def admin_dashboard_stats(
 
 @router.get("/dashboard/scan-feed")
 async def admin_scan_feed(
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(25, ge=1, le=100, description="Latest N scans; full history via GET /admin/reports/scans"),
     current_user: dict = Depends(require_admin),
 ):
     """
     Recent scan activity feed for the admin live dashboard.
-    Returns the latest N scan log entries.
+    Returns the latest N scan log entries (newest first). Older rows remain in ``scan_logs`` and export via reports.
     """
     db = get_db()
 
@@ -768,6 +838,7 @@ async def admin_get_consumer_config(current_user: dict = Depends(require_admin))
         plans_globally_enabled=bool(c.get("plans_globally_enabled", True)),
         guest_pass_globally_enabled=bool(c.get("guest_pass_globally_enabled", True)),
         default_guest_pass_price_inr=int(c.get("default_guest_pass_price_inr") or 100),
+        default_guest_pass_validity_hours=int(c.get("default_guest_pass_validity_hours") or 48),
     )
 
 
@@ -783,6 +854,7 @@ async def admin_patch_consumer_config(
         plans_globally_enabled=bool(merged.get("plans_globally_enabled", True)),
         guest_pass_globally_enabled=bool(merged.get("guest_pass_globally_enabled", True)),
         default_guest_pass_price_inr=int(merged.get("default_guest_pass_price_inr") or 100),
+        default_guest_pass_validity_hours=int(merged.get("default_guest_pass_validity_hours") or 48),
     )
 
 
@@ -1090,9 +1162,13 @@ async def admin_broadcast_notification(
     Example: 'Dinner delayed by 30 minutes at North Wing'.
     """
     from app.utils.fcm_manager import send_notification
-    from app.services.notification_service import broadcast_in_app_notifications
+    from app.services.notification_service import (
+        broadcast_in_app_notifications,
+        log_admin_broadcast,
+    )
 
     db = get_db()
+    admin_id = current_user["sub"]
 
     # Get target residents
     query = db.collection("residents").where("status", "==", "ACTIVE")
@@ -1128,6 +1204,20 @@ async def admin_broadcast_notification(
         except Exception:
             fcm_failed += 1
 
+    try:
+        log_admin_broadcast(
+            admin_id=admin_id,
+            title=request.title,
+            message=request.message,
+            site_id=request.site_id,
+            recipient_count=len(residents),
+            stored_count=stored_count,
+            fcm_sent=fcm_sent,
+            fcm_failed=fcm_failed,
+        )
+    except Exception:
+        logger.exception("log_admin_broadcast failed")
+
     return APIResponse(
         status="success",
         message=(
@@ -1141,3 +1231,14 @@ async def admin_broadcast_notification(
             "total_residents": len(residents),
         },
     )
+
+
+@router.get("/notifications/broadcast-history")
+async def admin_broadcast_history(
+    limit: int = Query(10, ge=1, le=50),
+    current_user: dict = Depends(require_admin),
+):
+    """Recent admin push/in-app broadcasts (newest first)."""
+    from app.services.notification_service import list_admin_broadcast_history
+
+    return list_admin_broadcast_history(limit)

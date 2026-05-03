@@ -26,6 +26,12 @@ def _site_info_from_doc(doc_id: str, data: dict) -> SiteInfo:
             gp = int(gp)
         except (TypeError, ValueError):
             gp = None
+    gvh = data.get("guest_pass_validity_hours")
+    if gvh is not None:
+        try:
+            gvh = int(gvh)
+        except (TypeError, ValueError):
+            gvh = None
     return SiteInfo(
         id=doc_id,
         name=data.get("name", ""),
@@ -36,6 +42,7 @@ def _site_info_from_doc(doc_id: str, data: dict) -> SiteInfo:
         resident_plans_enabled=data.get("resident_plans_enabled", True),
         resident_guest_pass_enabled=data.get("resident_guest_pass_enabled", True),
         guest_pass_price_inr=gp,
+        guest_pass_validity_hours=gvh,
         hidden_plan_ids=list(data.get("hidden_plan_ids") or []),
     )
 

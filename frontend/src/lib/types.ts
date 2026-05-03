@@ -122,6 +122,8 @@ export interface SiteInfo {
   resident_guest_pass_enabled?: boolean;
   /** Override INR price; omit/null uses global default from admin consumer config. */
   guest_pass_price_inr?: number | null;
+  /** Override guest pass validity in hours; omit/null uses global default (48h = 2 days). */
+  guest_pass_validity_hours?: number | null;
   /** Plan document ids hidden for this site only. */
   hidden_plan_ids?: string[];
 }
@@ -167,6 +169,8 @@ export interface PlanInfo {
 export interface ResidentGuestPassCatalog {
   enabled: boolean;
   price_inr: number;
+  /** Hours until a newly issued guest pass expires (after payment). */
+  validity_hours: number;
 }
 
 export interface ResidentCatalogResponse {
@@ -179,6 +183,8 @@ export interface ConsumerConfigResponse {
   plans_globally_enabled: boolean;
   guest_pass_globally_enabled: boolean;
   default_guest_pass_price_inr: number;
+  /** Default guest pass validity in hours (sites may override). Default 48 = 2 days. */
+  default_guest_pass_validity_hours: number;
 }
 
 export interface CreateOrderResponse {

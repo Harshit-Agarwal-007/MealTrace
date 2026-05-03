@@ -88,7 +88,7 @@ def generate_weekly_report(start_date: Optional[datetime] = None) -> bytes:
         if key not in daily_data:
             daily_data[key] = {"breakfast": 0, "lunch": 0, "dinner": 0, "site": data.get("site_id", "")}
 
-        meal = data.get("meal_type", "").lower()
+        meal = (data.get("meal_type") or "").strip().lower()
         if meal in daily_data[key]:
             daily_data[key][meal] += 1
 
@@ -316,6 +316,85 @@ def generate_residents_report() -> bytes:
         ws.cell(row=row, column=9, value=data.get("plan_id", "") or "")
         ws.cell(row=row, column=10, value=data.get("dietary_preference", "VEG"))
         ws.cell(row=row, column=11, value=str(ts)[:19] if ts else "")
+        row += 1
+
+    buffer = io.BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+def generate_scans_activity_report(
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+    site_id: Optional[str] = None,
+    max_rows: int = 50_000,
+) -> bytes:
+    """
+    Full scan log export for a time range (all statuses).
+
+    Scans are written to ``scan_logs`` when vendors validate QR codes; this export
+    is the way to review full history beyond the capped admin live feeds.
+
+    Columns: Timestamp | Scan ID | Resident | Site | Vendor | Meal | Status | Block reason | Guest pass | Manual | Notes
+    """
+    db = get_db()
+
+    if end_date is None:
+        end_date = datetime.now(timezone.utc)
+    if start_date is None:
+        start_date = end_date - timedelta(days=7)
+
+    all_logs_raw = (
+        db.collection("scan_logs")
+        .where("timestamp", ">=", start_date)
+        .where("timestamp", "<=", end_date)
+        .get()
+    )
+    logs = list(all_logs_raw)
+    if site_id:
+        logs = [d for d in logs if d.to_dict().get("site_id") == site_id]
+    logs.sort(
+        key=lambda d: d.to_dict().get("timestamp", datetime.min.replace(tzinfo=timezone.utc)),
+        reverse=True,
+    )
+    if len(logs) > max_rows:
+        logs = logs[:max_rows]
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Scan Activity"
+
+    headers = [
+        "Timestamp (UTC)",
+        "Scan ID",
+        "Resident ID",
+        "Site ID",
+        "Vendor ID",
+        "Meal Type",
+        "Status",
+        "Block Reason",
+        "Guest Pass",
+        "Manual Scan",
+        "Description",
+    ]
+    _style_header(ws, headers)
+
+    row = 2
+    for doc in logs:
+        data = doc.to_dict()
+        ts = data.get("timestamp")
+        ws.cell(row=row, column=1, value=str(ts)[:26] if ts else "")
+        ws.cell(row=row, column=2, value=doc.id)
+        ws.cell(row=row, column=3, value=data.get("resident_id", ""))
+        ws.cell(row=row, column=4, value=data.get("site_id", ""))
+        ws.cell(row=row, column=5, value=data.get("vendor_id", ""))
+        ws.cell(row=row, column=6, value=data.get("meal_type", ""))
+        ws.cell(row=row, column=7, value=data.get("status", ""))
+        ws.cell(row=row, column=8, value=str(data.get("block_reason") or ""))
+        ws.cell(row=row, column=9, value="Y" if data.get("is_guest_pass") else "")
+        ws.cell(row=row, column=10, value="Y" if data.get("is_manual") else "")
+        ws.cell(row=row, column=11, value=str(data.get("description") or ""))
         row += 1
 
     buffer = io.BytesIO()

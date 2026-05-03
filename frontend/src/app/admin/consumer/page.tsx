@@ -18,7 +18,10 @@ export default function AdminConsumerSettingsPage() {
     setError(null);
     try {
       const data = await api.get<ConsumerConfigResponse>("/admin/consumer-config");
-      setCfg(data);
+      setCfg({
+        ...data,
+        default_guest_pass_validity_hours: data.default_guest_pass_validity_hours ?? 48,
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to load settings");
     } finally {
@@ -40,6 +43,7 @@ export default function AdminConsumerSettingsPage() {
         plans_globally_enabled: cfg.plans_globally_enabled,
         guest_pass_globally_enabled: cfg.guest_pass_globally_enabled,
         default_guest_pass_price_inr: cfg.default_guest_pass_price_inr,
+        default_guest_pass_validity_hours: cfg.default_guest_pass_validity_hours,
       });
       setCfg(updated);
       setSuccess(true);
@@ -156,6 +160,31 @@ export default function AdminConsumerSettingsPage() {
             className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-100"
           />
           <p className="mt-1 text-[10px] text-slate-400">Sites can override this on the site detail page.</p>
+        </div>
+
+        <div>
+          <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-slate-400">
+            Default guest pass validity (hours)
+          </label>
+          <input
+            type="number"
+            min={1}
+            max={8760}
+            value={cfg.default_guest_pass_validity_hours ?? 48}
+            onChange={(e) =>
+              setCfg({
+                ...cfg,
+                default_guest_pass_validity_hours: Math.min(
+                  8760,
+                  Math.max(1, parseInt(e.target.value, 10) || 48)
+                ),
+              })
+            }
+            className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+          />
+          <p className="mt-1 text-[10px] text-slate-400">
+            Default is 48 hours (2 days). Max 8760 (1 year). Each site can set its own override.
+          </p>
         </div>
       </div>
     </div>

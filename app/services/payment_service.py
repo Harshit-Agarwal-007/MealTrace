@@ -392,7 +392,7 @@ def purchase_guest_pass(
     """
     from datetime import timedelta
 
-    from app.services.catalog_service import assert_guest_pass_purchasable
+    from app.services.catalog_service import assert_guest_pass_purchasable, guest_pass_validity_hours_for_resident
 
     assert_guest_pass_purchasable(resident_id)
 
@@ -411,7 +411,8 @@ def purchase_guest_pass(
 
     db = get_db()
     now = datetime.now(timezone.utc)
-    expiry = now + timedelta(hours=24)
+    validity_hours = guest_pass_validity_hours_for_resident(resident_id)
+    expiry = now + timedelta(hours=validity_hours)
 
     # Generate a unique guest QR payload
     guest_id = f"guest_{uuid.uuid4().hex[:12]}"

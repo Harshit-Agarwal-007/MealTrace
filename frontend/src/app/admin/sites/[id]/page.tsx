@@ -30,6 +30,9 @@ interface SiteScanFeed {
     timestamp: string;
   }[];
   count: number;
+  total_in_window?: number;
+  truncated?: boolean;
+  limit?: number;
 }
 
 export default function AdminSiteDetail({ params }: { params: Promise<{id: string}> }) {
@@ -47,7 +50,7 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
     try {
       const [siteData, feedData, plansData] = await Promise.all([
         api.get<SiteInfo>(`/sites/${id}`),
-        api.get<SiteScanFeed>(`/admin/sites/${id}/live-scans?hours=24`),
+        api.get<SiteScanFeed>(`/admin/sites/${id}/live-scans?hours=24&limit=80`),
         api.get<PlanInfo[]>("/admin/plans"),
       ]);
       setSite(siteData);
@@ -77,6 +80,7 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
         resident_plans_enabled: site.resident_plans_enabled ?? true,
         resident_guest_pass_enabled: site.resident_guest_pass_enabled ?? true,
         guest_pass_price_inr: site.guest_pass_price_inr ?? null,
+        guest_pass_validity_hours: site.guest_pass_validity_hours ?? null,
         hidden_plan_ids: site.hidden_plan_ids ?? [],
       });
       setSuccess(true);
@@ -225,52 +229,12 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
               />
             </div>
           </button>
-          <button
-            type="button"
-            onClick={() =>
-              site && setSite({ ...site, resident_guest_pass_enabled: !(site.resident_guest_pass_enabled ?? true) })
-            }
-            className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-left transition-colors hover:bg-slate-50"
-          >
-            <div>
-              <p className="text-sm font-black text-slate-900">Allow guest passes</p>
-              <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Paid one-meal QR for residents</p>
-            </div>
-            <div
-              className={`relative h-6 w-12 shrink-0 rounded-full shadow-inner transition-colors ${
-                site.resident_guest_pass_enabled ?? true ? "bg-emerald-500" : "bg-slate-300"
-              }`}
-            >
-              <div
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-all ${
-                  site.resident_guest_pass_enabled ?? true ? "right-0.5" : "left-0.5"
-                }`}
-              />
-            </div>
-          </button>
-          <div>
-            <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-slate-400">
-              Guest pass price (INR, optional)
-            </label>
-            <input
-              type="number"
-              min={1}
-              placeholder="Use global default"
-              value={site.guest_pass_price_inr != null ? site.guest_pass_price_inr : ""}
-              onChange={(e) => {
-                const v = e.target.value;
-                setSite({
-                  ...site,
-                  guest_pass_price_inr: v === "" ? null : Math.max(1, parseInt(v, 10) || 1),
-                });
-              }}
-              className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-100"
-            />
-            <p className="mt-1 text-[10px] text-slate-400">Leave empty to use the global default from store settings.</p>
-          </div>
-          {allPlans.filter((p) => p.is_active !== false).length > 0 ? (
+          {(site.resident_plans_enabled ?? true) && allPlans.filter((p) => p.is_active !== false).length > 0 ? (
             <div className="border-t border-slate-100 pt-4">
-              <p className="mb-2 text-xs font-bold text-slate-700">Hide specific plans at this site</p>
+              <p className="mb-1 text-xs font-bold text-slate-700">Show plans at this site</p>
+              <p className="mb-2 text-[10px] font-medium text-slate-500">
+                Only checked plans appear in the resident store for this site. Unchecked plans stay hidden.
+              </p>
               <div className="max-h-48 space-y-2 overflow-y-auto rounded-xl border border-slate-100 bg-slate-50/50 p-3">
                 {allPlans
                   .filter((p) => p.is_active !== false)
@@ -280,7 +244,7 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
                       <label key={p.id} className="flex cursor-pointer items-center gap-3 text-sm font-semibold text-slate-800">
                         <input
                           type="checkbox"
-                          checked={hidden}
+                          checked={!hidden}
                           onChange={() => toggleHiddenPlan(p.id)}
                           className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                         />
@@ -293,6 +257,79 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
                   })}
               </div>
             </div>
+          ) : null}
+          <div className="border-t border-slate-100 pt-3">
+            <button
+              type="button"
+              onClick={() =>
+                site && setSite({ ...site, resident_guest_pass_enabled: !(site.resident_guest_pass_enabled ?? true) })
+              }
+              className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-slate-50/80 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+            >
+              <div>
+                <p className="text-sm font-black text-slate-900">Allow guest passes</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Paid one-meal QR for residents</p>
+              </div>
+              <div
+                className={`relative h-6 w-12 shrink-0 rounded-full shadow-inner transition-colors ${
+                  site.resident_guest_pass_enabled ?? true ? "bg-emerald-500" : "bg-slate-300"
+                }`}
+              >
+                <div
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-md transition-all ${
+                    site.resident_guest_pass_enabled ?? true ? "right-0.5" : "left-0.5"
+                  }`}
+                />
+              </div>
+            </button>
+          </div>
+          {(site.resident_guest_pass_enabled ?? true) ? (
+            <>
+              <div>
+                <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  Guest pass price (INR, optional)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  placeholder="Use global default"
+                  value={site.guest_pass_price_inr != null ? site.guest_pass_price_inr : ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setSite({
+                      ...site,
+                      guest_pass_price_inr: v === "" ? null : Math.max(1, parseInt(v, 10) || 1),
+                    });
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+                <p className="mt-1 text-[10px] text-slate-400">Leave empty to use the global default from store settings.</p>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-[10px] font-black uppercase tracking-widest text-slate-400">
+                  Guest pass validity (hours, optional)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={8760}
+                  placeholder="Use global default (e.g. 48)"
+                  value={site.guest_pass_validity_hours != null ? site.guest_pass_validity_hours : ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setSite({
+                      ...site,
+                      guest_pass_validity_hours: v === "" ? null : Math.min(8760, Math.max(1, parseInt(v, 10) || 1)),
+                    });
+                  }}
+                  className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                />
+                <p className="mt-1 text-[10px] text-slate-400">
+                  How long a purchased guest pass QR stays valid. Leave empty to use the global default from store
+                  settings (default 48h = 2 days).
+                </p>
+              </div>
+            </>
           ) : null}
         </div>
       </div>
@@ -348,7 +385,16 @@ export default function AdminSiteDetail({ params }: { params: Promise<{id: strin
       {/* Site Analytics section */}
       <div className="mt-8 space-y-4">
          <h2 className="text-lg font-black text-slate-800 ml-2">Site Activity Feed</h2>
-         
+         {feed?.truncated && feed.total_in_window != null ? (
+            <p className="ml-2 text-[11px] font-medium leading-relaxed text-slate-500">
+              Showing the newest {feed.count} of {feed.total_in_window} scans in the last 24h. Full history is in the database — export{" "}
+              <Link href="/admin/reports" className="font-bold text-indigo-600 underline">
+                Scan activity
+              </Link>{" "}
+              on the reports page.
+            </p>
+         ) : null}
+
          {!feed || feed.scans.length === 0 ? (
             <div className="bg-white rounded-[24px] p-8 text-center border border-slate-100">
                <p className="text-slate-400 font-bold text-sm">No scans recorded in last 24h</p>
