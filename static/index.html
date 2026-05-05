@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MealTrace Digital — MVP Testing Dashboard</title>
+    <meta name="description" content="MealTrace Digital QR-based meal tracking system — internal testing UI">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- ═══════════════════════════════════════ -->
+    <!-- LOGIN SCREEN                            -->
+    <!-- ═══════════════════════════════════════ -->
+    <div id="login-screen" class="screen active">
+        <div class="login-container">
+            <div class="login-brand">
+                <div class="logo-icon">🍽️</div>
+                <h1>MealTrace <span>Digital</span></h1>
+                <p class="tagline">QR-Based Meal Tracking System</p>
+            </div>
+            <div class="login-card">
+                <h2>Select Role to Test</h2>
+                <p class="login-subtitle">Development mode — pick a role to login</p>
+                <div id="login-users" class="role-grid">
+                    <!-- Populated dynamically -->
+                </div>
+                <div id="login-error" class="error-msg hidden"></div>
+                <div id="login-loading" class="loading hidden">
+                    <div class="spinner"></div>
+                    <span>Authenticating...</span>
+                </div>
+            </div>
+            <p class="footer-note">⚠️ Dev-only UI — Not for production</p>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════ -->
+    <!-- MAIN APP (post-login)                   -->
+    <!-- ═══════════════════════════════════════ -->
+    <div id="app-screen" class="screen">
+        <!-- Top Nav -->
+        <nav class="topbar">
+            <div class="topbar-left">
+                <span class="nav-logo">🍽️ MealTrace</span>
+            </div>
+            <div class="topbar-center">
+                <span id="nav-role-badge" class="role-badge"></span>
+                <span id="nav-user-name"></span>
+            </div>
+            <div class="topbar-right">
+                <button id="btn-logout" class="btn btn-ghost" onclick="logout()">Logout ↗</button>
+            </div>
+        </nav>
+
+        <!-- ═══════ RESIDENT VIEW ═══════ -->
+        <div id="view-resident" class="view hidden">
+            <div class="dashboard-grid">
+                <!-- QR Code Card -->
+                <div class="card card-qr" id="card-qr">
+                    <div class="card-header">
+                        <h3>Your Meal QR Code</h3>
+                        <button class="btn btn-sm btn-primary" onclick="refreshQR()">Refresh QR</button>
+                    </div>
+                    <div class="qr-display" id="qr-display">
+                        <div class="loading"><div class="spinner"></div></div>
+                    </div>
+                    <p class="qr-note">Show this to the vendor scanner</p>
+                </div>
+
+                <!-- Balance Card -->
+                <div class="card card-balance">
+                    <div class="card-header"><h3>Meal Balance</h3></div>
+                    <div class="balance-display">
+                        <span class="balance-number" id="resident-balance">--</span>
+                        <span class="balance-label">meals remaining</span>
+                    </div>
+                    <div class="balance-bar-wrap">
+                        <div class="balance-bar" id="balance-bar" style="width:0%"></div>
+                    </div>
+                </div>
+
+                <!-- Profile Card -->
+                <div class="card card-profile">
+                    <div class="card-header"><h3>Profile</h3></div>
+                    <div id="resident-profile-info" class="profile-info">
+                        <div class="loading"><div class="spinner"></div></div>
+                    </div>
+                </div>
+
+                <!-- Transaction History -->
+                <div class="card card-transactions card-wide">
+                    <div class="card-header">
+                        <h3>Recent Transactions</h3>
+                    </div>
+                    <div id="resident-transactions" class="table-wrap">
+                        <div class="loading"><div class="spinner"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ VENDOR VIEW ═══════ -->
+        <div id="view-vendor" class="view hidden">
+            <div class="scanner-layout">
+                <!-- Scanner Panel -->
+                <div class="card card-scanner">
+                    <div class="card-header">
+                        <h3>🔍 Meal Scanner</h3>
+                    </div>
+                    <div class="scanner-controls">
+                        <div class="form-group">
+                            <label for="vendor-site-select">Active Site</label>
+                            <select id="vendor-site-select" class="input"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="vendor-resident-select">Select Resident QR</label>
+                            <select id="vendor-resident-select" class="input">
+                                <option value="">— Pick a resident —</option>
+                            </select>
+                        </div>
+                        <button id="btn-scan" class="btn btn-primary btn-lg btn-scan" onclick="performScan()">
+                            ⚡ SCAN MEAL
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Scan Result -->
+                <div class="card card-scan-result" id="scan-result-card">
+                    <div id="scan-result" class="scan-result scan-idle">
+                        <div class="scan-icon">📷</div>
+                        <h2>Ready to Scan</h2>
+                        <p>Select a site and resident, then click SCAN MEAL</p>
+                    </div>
+                </div>
+
+                <!-- Recent Scans -->
+                <div class="card card-wide">
+                    <div class="card-header"><h3>Recent Scan Log</h3></div>
+                    <div id="vendor-scan-log" class="table-wrap">
+                        <p class="empty-state">No scans yet this session</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════ ADMIN VIEW ═══════ -->
+        <div id="view-admin" class="view hidden">
+            <!-- Tab Navigation -->
+            <div class="admin-tabs">
+                <button class="tab-btn active" onclick="switchAdminTab('dashboard')" id="tab-dashboard">📊 Dashboard</button>
+                <button class="tab-btn" onclick="switchAdminTab('residents')" id="tab-residents">👥 Residents</button>
+                <button class="tab-btn" onclick="switchAdminTab('credits')" id="tab-credits">💰 Credits</button>
+                <button class="tab-btn" onclick="switchAdminTab('reports')" id="tab-reports">📄 Reports</button>
+                <button class="tab-btn" onclick="switchAdminTab('sites')" id="tab-sites">🏠 Sites</button>
+            </div>
+
+            <!-- Dashboard Tab -->
+            <div id="admin-tab-dashboard" class="admin-panel">
+                <div class="stats-grid" id="admin-stats">
+                    <div class="loading"><div class="spinner"></div></div>
+                </div>
+                <div class="card card-wide" style="margin-top:1.5rem">
+                    <div class="card-header">
+                        <h3>Live Scan Feed</h3>
+                        <button class="btn btn-sm btn-ghost" onclick="loadScanFeed()">↻ Refresh</button>
+                    </div>
+                    <div id="admin-scan-feed" class="table-wrap">
+                        <div class="loading"><div class="spinner"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Residents Tab -->
+            <div id="admin-tab-residents" class="admin-panel hidden">
+                <div class="card">
+                    <div class="card-header">
+                        <h3>Resident Management</h3>
+                        <button class="btn btn-sm btn-primary" onclick="showAddResident()">+ Add Resident</button>
+                    </div>
+                    <!-- Add Resident Form -->
+                    <div id="add-resident-form" class="inline-form hidden">
+                        <div class="form-row">
+                            <input id="new-res-name" class="input" placeholder="Full Name" required>
+                            <input id="new-res-email" class="input" placeholder="Email" type="email" required>
+                            <input id="new-res-phone" class="input" placeholder="Phone (optional)">
+                            <input id="new-res-room" class="input" placeholder="Room No." required>
+                            <select id="new-res-site" class="input"></select>
+                            <button class="btn btn-primary" onclick="addResident()">Add</button>
+                            <button class="btn btn-ghost" onclick="hideAddResident()">Cancel</button>
+                        </div>
+                    </div>
+                    <div id="admin-residents-list" class="table-wrap">
+                        <div class="loading"><div class="spinner"></div></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Credits Tab -->
+            <div id="admin-tab-credits" class="admin-panel hidden">
+                <div class="card">
+                    <div class="card-header"><h3>Credit Override</h3></div>
+                    <div class="credit-form">
+                        <div class="form-group">
+                            <label for="credit-resident">Resident</label>
+                            <select id="credit-resident" class="input"></select>
+                        </div>
+                        <div class="form-group">
+                            <label for="credit-amount">Amount</label>
+                            <input id="credit-amount" type="number" class="input" placeholder="+ to add, − to deduct">
+                        </div>
+                        <div class="form-group">
+                            <label for="credit-reason">Reason</label>
+                            <input id="credit-reason" class="input" placeholder="Reason for override">
+                        </div>
+                        <button class="btn btn-primary" onclick="submitCreditOverride()">Apply Override</button>
+                    </div>
+                    <div id="credit-result" class="hidden" style="margin-top:1rem;"></div>
+                </div>
+            </div>
+
+            <!-- Reports Tab -->
+            <div id="admin-tab-reports" class="admin-panel hidden">
+                <div class="card">
+                    <div class="card-header"><h3>Download Reports</h3></div>
+                    <div class="reports-grid">
+                        <button class="report-btn" onclick="downloadReport('weekly')">
+                            <span class="report-icon">📅</span>
+                            <span class="report-name">Weekly Attendance</span>
+                            <span class="report-desc">Last 7 days per-resident breakdown</span>
+                        </button>
+                        <button class="report-btn" onclick="downloadReport('monthly')">
+                            <span class="report-icon">📊</span>
+                            <span class="report-name">Monthly Summary</span>
+                            <span class="report-desc">Aggregated monthly overview</span>
+                        </button>
+                        <button class="report-btn" onclick="downloadReport('financial')">
+                            <span class="report-icon">💰</span>
+                            <span class="report-name">Financial Report</span>
+                            <span class="report-desc">Payment transaction log</span>
+                        </button>
+                        <button class="report-btn" onclick="downloadReport('exception')">
+                            <span class="report-icon">⚠️</span>
+                            <span class="report-name">Exception Report</span>
+                            <span class="report-desc">Blocked scans by date range</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sites Tab -->
+            <div id="admin-tab-sites" class="admin-panel hidden">
+                <div class="card">
+                    <div class="card-header"><h3>Site & Meal Window Config</h3></div>
+                    <div id="admin-sites-list" class="table-wrap">
+                        <div class="loading"><div class="spinner"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Container -->
+    <div id="toast-container"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

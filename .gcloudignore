@@ -1,0 +1,10 @@
+.gcloudignore
+.git
+.gitignore
+node_modules
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+.env
+serviceAccountKey.json

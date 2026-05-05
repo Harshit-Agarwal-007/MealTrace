@@ -1,0 +1,130 @@
+
+--- ADMIN_USERS ---
+ID: admin_manish_001 | Data: {
+  "fcm_token": null,
+  "name": "Manish Kumar",
+  "created_at": "2026-04-06T18:08:46.471090+00:00",
+  "role": "SUPER_ADMIN",
+  "site_id": null,
+  "email": "17harshit2003@gmail.com"
+}
+ID: vendor_user_001 | Data: {
+  "fcm_token": null,
+  "name": "Vendor Staff 1",
+  "created_at": "2026-04-06T18:08:46.471090+00:00",
+  "role": "VENDOR",
+  "site_id": "site_north_001",
+  "email": "ag.harshit03+vendor1@gmail.com"
+}
+ID: vendor_user_002 | Data: {
+  "fcm_token": null,
+  "name": "Vendor Staff 2",
+  "created_at": "2026-04-06T18:08:46.471090+00:00",
+  "role": "VENDOR",
+  "site_id": "site_south_002",
+  "email": "vendor2@catering.com"
+}
+Total: 3
+
+--- RESIDENTS ---
+ID: res_2958e69565a8 | Data: {
+  "dietary_preference": "NON-VEG",
+  "email": "ag.harshit03+resident@gmail.com",
+  "qr_generated_at": "2026-04-11T12:54:26.730791+00:00",
+  "qr_signed_payload": "eyJyaWQiOiJyZXNfMjk1OGU2OTU2NWE4Iiwic2lkIjoic2l0ZV9ub3J0aF8wMDEiLCJ0cyI6IjIwMjYtMDQtMTFUMTI6NTQ6MjYuNjY3NzMzKzAwOjAwIiwic2lnIjoiN2E3NTdlYzBjYzI3ZmQ1NTVlZjEwMTZlMmIzYjkwYzAyZmI4N2U5M2MxZjlmOTk3NjgwNzRiMzE5MzhhMDAxMSJ9",
+  "site_id": "site_north_001",
+  "allowed_meals": [],
+  "room_number": "1308",
+  "created_at": "2026-04-11T12:51:30.701246+00:00",
+  "phone": "123456789",
+  "status": "ACTIVE",
+  "balance": 0,
+  "plan_id": null,
+  "name": "Harshit Agarwal",
+  "firebase_uid": "srdtvUOLnqMSPmq1E0pnd8QUhIl1"
+}
+ID: res_9f496683f060 | Data: {
+  "site_id": "site_south_002",
+  "created_at": "2026-04-06T18:30:48.852206+00:00",
+  "room_number": "23",
+  "phone": "98340283",
+  "status": "ACTIVE",
+  "email": "rahul@gmail.com",
+  "qr_signed_payload": "eyJyaWQiOiJyZXNfOWY0OTY2ODNmMDYwIiwic2lkIjoic2l0ZV9zb3V0aF8wMDIiLCJ0cyI6IjIwMjYtMDQtMDZUMTg6MzI6NDcuNTE0Njc5KzAwOjAwIiwic2lnIjoiNDJlYjc4ODk3YmY4NmIzZWQzYTQxYjdkMWNjYzgyNzZmOTdkYjEzMWU4N2Y3NmVjZWEyNGJlMDMwYmRmZmIyYyJ9",
+  "balance": 30,
+  "name": "Rahul"
+}
+ID: res_harshit_007 | Data: {
+  "qr_generated_at": "2026-04-06T18:29:50.034526+00:00",
+  "name": "Harshit Agarwal",
+  "site_id": "site_north_001",
+  "fcm_token": null,
+  "room_number": "B-102",
+  "phone": "+919876543210",
+  "status": "ACTIVE",
+  "balance": 30,
+  "qr_signed_payload": "eyJyaWQiOiJyZXNfaGFyc2hpdF8wMDciLCJzaWQiOiJzaXRlX25vcnRoXzAwMSIsInRzIjoiMjAyNi0wNC0wNlQxODoyOTo1MC4wMDI2MDcrMDA6MDAiLCJzaWciOiJkZjBkMjIwODgzYTAwYTMwNjRhZWY1ZDlkZmQ3YWU3Yjc0Y2IyYzgxY2ZhNjk0MmIyYTgwMTYzMjM5NTBhZDVlIn0=",
+  "email": "harshit@example.com",
+  "created_at": "2026-04-06T18:08:46.471090+00:00"
+}
+ID: res_test_001 | Data: {
+  "qr_generated_at": "2026-04-06T18:30:09.861183+00:00",
+  "name": "Test Resident",
+  "site_id": "site_north_001",
+  "fcm_token": null,
+  "room_number": "A-201",
+  "phone": "+919876543211",
+  "status": "ACTIVE",
+  "balance": 15,
+  "qr_signed_payload": "eyJyaWQiOiJyZXNfdGVzdF8wMDEiLCJzaWQiOiJzaXRlX25vcnRoXzAwMSIsInRzIjoiMjAyNi0wNC0wNlQxODozMDowOS43ODQ3NjQrMDA6MDAiLCJzaWciOiIzOWIyNTcwYWY0YmJmZjFhM2U5ZTQ0ODhjMDNiZGY0ZTU2ODY0Njk2YzFmZTkzYTRmMWEwZTBkODJkMWE3ZjhhIn0=",
+  "email": "test@example.com",
+  "created_at": "2026-04-06T18:08:46.471090+00:00"
+}
+Total: 4
+
+--- SITES ---
+ID: site_north_001 | Data: {
+  "meal_windows": {
+    "breakfast": {
+      "start": "07:30",
+      "end": "09:30"
+    },
+    "lunch": {
+      "start": "12:30",
+      "end": "14:30"
+    },
+    "dinner": {
+      "start": "19:30",
+      "end": "21:30"
+    }
+  },
+  "name": "Manish PG \u2014 North Wing",
+  "is_active": true,
+  "created_at": "2026-04-06T18:08:46.471090+00:00",
+  "vendor_staff_ids": [
+    "vendor_user_001"
+  ]
+}
+ID: site_south_002 | Data: {
+  "meal_windows": {
+    "breakfast": {
+      "start": "08:00",
+      "end": "10:00"
+    },
+    "lunch": {
+      "start": "13:00",
+      "end": "15:00"
+    },
+    "dinner": {
+      "start": "20:00",
+      "end": "22:00"
+    }
+  },
+  "name": "Manish PG \u2014 South Wing",
+  "is_active": true,
+  "created_at": "2026-04-06T18:08:46.471090+00:00",
+  "vendor_staff_ids": [
+    "vendor_user_002"
+  ]
+}
+Total: 2
