@@ -38,8 +38,8 @@ export default function VendorSiteSelection() {
 
   return (
     <div className="p-6 h-full flex flex-col pt-12 animate-in fade-in duration-500">
-      <h1 className="text-3xl font-bold mb-2 text-white">Select Site</h1>
-      <p className="mb-8 font-medium text-indigo-100">Choose your current location to start scanning.</p>
+      <h1 className="text-3xl font-bold mb-2 text-slate-900">Select Site</h1>
+      <p className="mb-8 font-medium text-slate-500">Choose your current location to start scanning.</p>
 
       {/* Loading */}
       {loading && (

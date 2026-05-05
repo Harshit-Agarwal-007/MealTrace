@@ -39,6 +39,13 @@ export default function VendorScanner() {
   const validateScan = useCallback(
     async (qrPayload: string) => {
       if (scanLockRef.current) return;
+      if (!siteId) {
+        setScanResult({
+          status: "BLOCKED",
+          block_reason: "No site selected. Choose a site first on the Vendor home screen.",
+        });
+        return;
+      }
       scanLockRef.current = true;
       try {
         scannerRef.current?.pause(true);
@@ -55,9 +62,17 @@ export default function VendorScanner() {
         });
         setScanResult(result);
       } catch (err) {
+        const msg = err instanceof Error ? err.message : "Scan failed. Try again.";
+        const isNetwork = /failed to fetch|networkerror|load failed/i.test(msg);
+        const base =
+          typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL
+            ? process.env.NEXT_PUBLIC_API_URL
+            : "http://localhost:8000";
         setScanResult({
           status: "BLOCKED",
-          block_reason: err instanceof Error ? err.message : "Scan failed. Try again.",
+          block_reason: isNetwork
+            ? `Failed to reach API (${base}). Check backend is running and NEXT_PUBLIC_API_URL is correct.`
+            : msg,
         });
       } finally {
         setScanning(false);

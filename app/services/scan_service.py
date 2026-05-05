@@ -67,17 +67,28 @@ def _check_duplicate_scan(db, resident_id: str, site_id: str, meal_type: str) ->
     today_start_utc = today_start.astimezone(timezone.utc)
     today_end_utc = today_end.astimezone(timezone.utc)
 
-    existing = (
+    # NOTE:
+    # Using 4-field where clauses here requires a composite Firestore index
+    # (resident_id + meal_type + status + timestamp), which can fail in fresh envs.
+    # Keep this index-free by querying resident-only and filtering in memory.
+    docs = (
         db.collection("scan_logs")
         .where(filter=FieldFilter("resident_id", "==", resident_id))
-        .where(filter=FieldFilter("meal_type", "==", meal_type))
-        .where(filter=FieldFilter("status", "==", "SUCCESS"))
-        .where(filter=FieldFilter("timestamp", ">=", today_start_utc))
-        .where(filter=FieldFilter("timestamp", "<=", today_end_utc))
-        .limit(1)
+        .limit(500)
         .get()
     )
-    return len(existing) > 0
+    for d in docs:
+        data = d.to_dict() or {}
+        if data.get("status") != "SUCCESS":
+            continue
+        if data.get("meal_type") != meal_type:
+            continue
+        ts = data.get("timestamp")
+        if not ts:
+            continue
+        if today_start_utc <= ts <= today_end_utc:
+            return True
+    return False
 
 
 def _check_active_guest_pass(db, resident_id: str, site_id: str, meal_type: str) -> dict:
@@ -89,8 +100,8 @@ def _check_active_guest_pass(db, resident_id: str, site_id: str, meal_type: str)
 
     passes = (
         db.collection("guest_passes")
-        .where("resident_id", "==", resident_id)
-        .where("status", "==", "UNUSED")
+        .where(filter=FieldFilter("resident_id", "==", resident_id))
+        .where(filter=FieldFilter("status", "==", "UNUSED"))
         .get()
     )
 
@@ -232,8 +243,11 @@ def validate_scan(qr_payload: str, site_id: str, actor_id: str, actor_role: str)
         return _consume_guest_pass(db, guest_pass, resident_id, site_id, vendor_id, meal_type, resident_name, now)
 
     # ── Block 5: NOT_IN_PLAN ──
-    allowed_meals = resident.get("allowed_meals", [])
-    if allowed_meals and meal_type not in allowed_meals:
+    # Enforce explicit meal-slot entitlement:
+    # - empty/missing allowed_meals => NOT_IN_PLAN
+    # - meal_type not present => NOT_IN_PLAN
+    allowed_meals = resident.get("allowed_meals") or []
+    if meal_type not in allowed_meals:
         _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.NOT_IN_PLAN, now)
         return ScanValidateResponse(
             status=ScanStatus.BLOCKED,
@@ -355,6 +369,9 @@ def _consume_guest_pass(
             "used_at": now,
             "used_meal_type": meal_type,
             "vendor_id": vendor_id,
+            # Discard QR payload/image after first successful use.
+            "qr_payload": None,
+            "qr_base64": None,
         })
 
         log_ref = db.collection("scan_logs").document()
@@ -476,8 +493,11 @@ def manual_scan(
         return _consume_guest_pass(db, guest_pass, resident_id, site_id, vendor_id, meal_type, resident_name, now)
 
     # ── Block: NOT_IN_PLAN ──
-    allowed_meals = resident.get("allowed_meals", [])
-    if allowed_meals and meal_type not in allowed_meals:
+    # Enforce explicit meal-slot entitlement:
+    # - empty/missing allowed_meals => NOT_IN_PLAN
+    # - meal_type not present => NOT_IN_PLAN
+    allowed_meals = resident.get("allowed_meals") or []
+    if meal_type not in allowed_meals:
         _log_scan(db, resident_id, site_id, vendor_id, meal_type, ScanStatus.BLOCKED, BlockReason.NOT_IN_PLAN, now)
         return ScanValidateResponse(
             status=ScanStatus.BLOCKED,

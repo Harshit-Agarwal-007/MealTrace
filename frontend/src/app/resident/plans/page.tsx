@@ -87,7 +87,7 @@ export default function PlansPage() {
         plan_id: selectedPlanId,
         guest_pass: false,
       });
-      
+
       const options = {
         key: order.razorpay_key_id,
         amount: order.amount,
@@ -112,7 +112,6 @@ export default function PlansPage() {
         alert("Payment failed: " + response.error.description);
       });
       rzp.open();
-
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to create order");
     } finally {
@@ -121,7 +120,7 @@ export default function PlansPage() {
   };
 
   return (
-    <div className="p-6 pt-8 pb-24 animate-in fade-in duration-500 bg-slate-50 min-h-screen">
+    <div className="p-6 pt-8 pb-44 animate-in fade-in duration-500 bg-slate-50 min-h-screen">
       <div className="flex items-center gap-4 mb-8">
         <Link href="/resident" className="bg-white p-2.5 rounded-full shadow-sm">
           <ChevronLeft className="w-5 h-5 text-slate-700" />
@@ -137,7 +136,9 @@ export default function PlansPage() {
       )}
 
       {loading ? (
-        <div className="flex justify-center py-20"><Loader2 className="w-8 h-8 animate-spin text-indigo-500" /></div>
+        <div className="flex justify-center py-20">
+          <Loader2 className="w-8 h-8 animate-spin text-indigo-500" />
+        </div>
       ) : plans.length === 0 ? (
         <div className="rounded-3xl border border-slate-200 bg-white px-6 py-16 text-center shadow-sm">
           <p className="text-lg font-bold text-slate-900">No plans available</p>
@@ -150,12 +151,12 @@ export default function PlansPage() {
       ) : (
         <div className="space-y-6">
           {plans.map((plan) => (
-            <div 
+            <div
               key={plan.id}
               onClick={() => setSelectedPlanId(plan.id)}
               className={`bg-white rounded-3xl p-6 transition-all duration-300 cursor-pointer border-2 relative overflow-hidden ${
-                selectedPlanId === plan.id 
-                  ? "border-indigo-600 shadow-xl shadow-indigo-100 scale-[1.02]" 
+                selectedPlanId === plan.id
+                  ? "border-indigo-600 shadow-xl shadow-indigo-100 scale-[1.02]"
                   : "border-transparent shadow-md hover:shadow-lg"
               }`}
             >
@@ -168,13 +169,13 @@ export default function PlansPage() {
                   <p className="text-2xl font-black text-indigo-600">₹{plan.price}</p>
                 </div>
               </div>
-              
+
               {plan.description && (
                 <p className="text-sm text-slate-600 mt-2 italic border-l-2 border-indigo-200 pl-3">
                   {plan.description}
                 </p>
               )}
-              
+
               <ul className="space-y-2 mt-6">
                 <li className="flex items-center gap-2 text-sm text-slate-600 font-medium">
                   <CheckCircle2 className="w-4 h-4 text-emerald-500" /> {plan.meal_count} Total Credits
@@ -185,9 +186,9 @@ export default function PlansPage() {
         </div>
       )}
 
-      {/* Sticky Bottom Bar — only when there is something to buy */}
+      {/* Sticky Bottom Bar — positioned above bottom nav */}
       {plans.length > 0 && (
-        <div className="fixed bottom-0 left-0 z-40 w-full border-t border-slate-100 bg-white p-4 pb-safe animate-in slide-in-from-bottom">
+        <div className="fixed left-0 right-0 z-[60] w-full border-t border-slate-100 bg-white p-4 pb-safe animate-in slide-in-from-bottom bottom-[calc(env(safe-area-inset-bottom)+84px)]">
           <button
             disabled={!selectedPlanId || processing}
             onClick={handlePurchase}

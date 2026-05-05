@@ -158,6 +158,7 @@ def subscribe_to_plan(
     resident_id: str,
     plan_id: str,
     selected_meals: List[str],
+    add_credits: bool = True,
 ) -> SubscriptionInfo:
     """
     Subscribe a resident to a meal plan with selected meal types.
@@ -167,7 +168,8 @@ def subscribe_to_plan(
     - Number of selected meals matches plan's meals_per_day
     - Selected meals are valid (BREAKFAST, LUNCH, DINNER)
 
-    Updates the resident's profile with plan info and credits.
+    Updates the resident's profile with plan info.
+    Credits are added only when add_credits=True.
     """
     db = get_db()
     now = datetime.now(timezone.utc)
@@ -204,6 +206,7 @@ def subscribe_to_plan(
     credits = plan.get("meal_count", meals_per_day * duration_days)
     expiry = now + timedelta(days=duration_days)
     current_balance = resident_doc.to_dict().get("balance", 0)
+    next_balance = current_balance + credits if add_credits else current_balance
 
     # Update resident with subscription
     resident_ref.update({
@@ -212,13 +215,19 @@ def subscribe_to_plan(
         "allowed_meals": selected_upper,
         "plan_started_at": now,
         "plan_expiry": expiry,
-        "balance": current_balance + credits,
+        "balance": next_balance,
     })
 
-    logger.info(
-        f"Resident {resident_id} subscribed to plan {plan_id}: "
-        f"{selected_upper}, +{credits} credits"
-    )
+    if add_credits:
+        logger.info(
+            f"Resident {resident_id} subscribed to plan {plan_id}: "
+            f"{selected_upper}, +{credits} credits"
+        )
+    else:
+        logger.info(
+            f"Resident {resident_id} plan changed to {plan_id}: "
+            f"{selected_upper}, credits unchanged ({current_balance})"
+        )
 
     return get_subscription(resident_id)
 

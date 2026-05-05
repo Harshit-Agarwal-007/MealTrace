@@ -101,9 +101,17 @@ export default function VendorManualEntry() {
         }, 3000);
       }
     } catch (err) {
+      const msg = err instanceof Error ? err.message : "Manual scan failed.";
+      const isNetwork = /failed to fetch|networkerror|load failed/i.test(msg);
+      const base =
+        typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL
+          ? process.env.NEXT_PUBLIC_API_URL
+          : "http://localhost:8000";
       setResult({
         status: "BLOCKED",
-        block_reason: err instanceof Error ? err.message : "Manual scan failed.",
+        block_reason: isNetwork
+          ? `Failed to reach API (${base}). Check backend is running and NEXT_PUBLIC_API_URL is correct.`
+          : msg,
       });
     } finally {
       setSubmitting(false);

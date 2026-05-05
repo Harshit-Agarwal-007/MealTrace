@@ -172,7 +172,7 @@ async def admin_add_resident(
 
     if plan_id:
         try:
-            subscribe_to_plan(profile.id, plan_id, selected_meals)
+            subscribe_to_plan(profile.id, plan_id, selected_meals, add_credits=False)
         except ValueError as e:
             raise HTTPException(
                 status_code=400,
@@ -765,7 +765,7 @@ async def admin_subscribe_resident(
     Useful when PG owner manages subscriptions on behalf of residents.
     """
     try:
-        return subscribe_to_plan(resident_id, request.plan_id, request.selected_meals)
+        return subscribe_to_plan(resident_id, request.plan_id, request.selected_meals, add_credits=False)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
