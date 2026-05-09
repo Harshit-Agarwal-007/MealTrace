@@ -24,9 +24,19 @@ type BroadcastLogRow = {
   created_at: string | null;
 };
 
+type Site = {
+  id: string;
+  name: string;
+  is_active: boolean;
+};
+
 export default function BroadcastPage() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
+  const [scope, setScope] = useState<"global" | "site">("site");
+  const [sites, setSites] = useState<Site[]>([]);
+  const [sitesLoading, setSitesLoading] = useState(true);
+  const [selectedSiteId, setSelectedSiteId] = useState("");
 
   const [status, setStatus] = useState<"IDLE" | "SENDING" | "SUCCESS" | "ERROR">("IDLE");
   const [msg, setMsg] = useState("");
@@ -50,16 +60,30 @@ export default function BroadcastPage() {
     loadHistory();
   }, [loadHistory]);
 
+  useEffect(() => {
+    setSitesLoading(true);
+    api
+      .get<{ sites: Site[] }>("/sites")
+      .then((res) => setSites(Array.isArray(res.sites) ? res.sites : []))
+      .catch(() => setSites([]))
+      .finally(() => setSitesLoading(false));
+  }, []);
+
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !body.trim()) return;
+    if (scope === "site" && !selectedSiteId.trim()) return;
 
     setStatus("SENDING");
     try {
-      await api.post("/admin/notifications/broadcast", {
+      const payload: { title: string; message: string; site_id?: string } = {
         title: title.trim(),
         message: body.trim(),
-      });
+      };
+      if (scope === "site") {
+        payload.site_id = selectedSiteId.trim();
+      }
+      await api.post("/admin/notifications/broadcast", payload);
       setStatus("SUCCESS");
       setMsg("Broadcast sent successfully!");
       setTitle("");
@@ -98,6 +122,52 @@ export default function BroadcastPage() {
           </div>
 
           <div>
+            <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Audience</label>
+            <div className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-800">
+                <input
+                  type="radio"
+                  name="broadcast-scope"
+                  checked={scope === "site"}
+                  onChange={() => setScope("site")}
+                  className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                One site only
+              </label>
+              {scope === "site" && (
+                <select
+                  value={selectedSiteId}
+                  onChange={(e) => setSelectedSiteId(e.target.value)}
+                  disabled={sitesLoading}
+                  className="ml-6 w-[calc(100%-1.5rem)] rounded-lg border border-slate-200 bg-white py-2.5 px-3 text-sm font-semibold text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-100"
+                >
+                  <option value="">{sitesLoading ? "Loading sites…" : "Select a site"}</option>
+                  {sites
+                    .filter((s) => s.is_active !== false)
+                    .map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name || s.id}
+                      </option>
+                    ))}
+                </select>
+              )}
+              <label className="flex cursor-pointer items-center gap-2 text-sm font-bold text-slate-800">
+                <input
+                  type="radio"
+                  name="broadcast-scope"
+                  checked={scope === "global"}
+                  onChange={() => setScope("global")}
+                  className="h-4 w-4 border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                All sites (every active resident)
+              </label>
+            </div>
+            <p className="mt-1.5 text-xs font-medium text-slate-500">
+              Site-specific sends only residents assigned to that site. Global sends every active resident across all sites.
+            </p>
+          </div>
+
+          <div>
             <label className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5 block">Message Body</label>
             <textarea
               required
@@ -122,7 +192,12 @@ export default function BroadcastPage() {
           )}
 
           <button
-            disabled={status === "SENDING" || !title.trim() || !body.trim()}
+            disabled={
+              status === "SENDING" ||
+              !title.trim() ||
+              !body.trim() ||
+              (scope === "site" && !selectedSiteId.trim())
+            }
             className="w-full bg-indigo-600 text-white font-bold py-4 rounded-xl flex items-center justify-center gap-2 disabled:opacity-50 mt-4 active:scale-95 transition-all"
           >
             {status === "SENDING" ? <Loader2 className="w-5 h-5 animate-spin" /> : <><Send className="w-5 h-5" /> Dispatch to Devices</>}
@@ -165,7 +240,9 @@ export default function BroadcastPage() {
                   <p className="mt-1 text-sm font-medium text-slate-600 line-clamp-3">{row.message}</p>
                   <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">
                     {row.recipient_count} residents · in-app {row.stored_count} · push {row.fcm_sent} ok / {row.fcm_failed} missed
-                    {row.site_id ? ` · site ${row.site_id}` : " · all sites"}
+                    {row.site_id
+                      ? ` · ${sites.find((s) => s.id === row.site_id)?.name ?? row.site_id}`
+                      : " · all sites"}
                   </p>
                 </li>
               );
