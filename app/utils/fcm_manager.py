@@ -80,8 +80,8 @@ def send_notification(
         return False
 
     if notification_type == "ADMIN_BROADCAST":
-        title = (payload or {}).get("title", "Announcement")
-        body = (payload or {}).get("message", "")
+        title = str(payload.get("title", "Announcement")).strip() or "Announcement"
+        body = str(payload.get("message", ""))
     else:
         notification_config = NOTIFICATION_TYPES.get(notification_type)
         if not notification_config:

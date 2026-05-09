@@ -1140,12 +1140,18 @@ async def admin_broadcast_notification(
     db = get_db()
     admin_id = current_user["sub"]
 
-    # Get target residents
-    query = db.collection("residents").where("status", "==", "ACTIVE")
+    # Active residents — site-scoped uses site_id query then ACTIVE filter in memory
+    # (no composite index needed on status + site_id).
     if request.site_id:
-        query = query.where("site_id", "==", request.site_id)
+        site_docs = list(
+            db.collection("residents")
+            .where("site_id", "==", request.site_id)
+            .stream()
+        )
+        residents = [d for d in site_docs if (d.to_dict() or {}).get("status") == "ACTIVE"]
+    else:
+        residents = list(db.collection("residents").where("status", "==", "ACTIVE").get())
 
-    residents = list(query.get())
     resident_ids = [d.id for d in residents]
 
     try:
