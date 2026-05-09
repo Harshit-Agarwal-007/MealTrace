@@ -2,7 +2,9 @@
 
 /**
  * Vendor Scanner — single validate per scan; scanner cleared when showing result;
- * region element remounts so Html5QrcodeScanner can start again after Declined/Success.
+ * region element remounts after Declined/Success.
+ * Uses Html5Qrcode (not Html5QrcodeScanner) so we open the back camera immediately
+ * with facingMode: environment — no camera-picker modal or “Start Scanning” step.
  */
 
 import { useEffect, useState, useRef, useCallback } from "react";
@@ -11,7 +13,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/apiClient";
 import type { ScanValidateResponse } from "@/lib/types";
-import { Html5QrcodeScanner } from "html5-qrcode";
+import { Html5Qrcode } from "html5-qrcode";
 
 const BLOCK_LABELS: Record<string, string> = {
   INVALID_QR: "Invalid QR Code",
@@ -29,7 +31,8 @@ export default function VendorScanner() {
   const [scanResult, setScanResult] = useState<ScanValidateResponse | null>(null);
   const [scanning, setScanning] = useState(false);
   const [scannerRegionKey, setScannerRegionKey] = useState(0);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
   const scanLockRef = useRef(false);
 
   const siteId = typeof window !== "undefined" ? localStorage.getItem("vendorSiteId") ?? "" : "";
@@ -79,57 +82,147 @@ export default function VendorScanner() {
         const s = scannerRef.current;
         if (s) {
           scannerRef.current = null;
-          void s.clear().catch(() => {});
+          void (async () => {
+            try {
+              await s.stop();
+            } catch {
+              /* already stopped */
+            }
+            try {
+              s.clear();
+            } catch {
+              /* ignore */
+            }
+          })();
         }
       }
     },
     [siteId, userId]
   );
 
-  const initScanner = useCallback(() => {
+  async function stopScanner(s: Html5Qrcode | null) {
+    if (!s) return;
+    try {
+      await s.stop();
+    } catch {
+      /* not running */
+    }
+    try {
+      s.clear();
+    } catch {
+      /* ignore */
+    }
+  }
+
+  const initScanner = useCallback(async () => {
     if (!siteId) return;
 
-    if (scannerRef.current) {
-      void scannerRef.current.clear().catch(() => {});
-      scannerRef.current = null;
-    }
+    await stopScanner(scannerRef.current);
+    scannerRef.current = null;
 
     scanLockRef.current = false;
+    setCameraError(null);
 
-    const scanner = new Html5QrcodeScanner(
-      regionElementId,
-      { fps: 10, qrbox: { width: 250, height: 250 } },
-      false
-    );
-    scannerRef.current = scanner;
-    scanner.render(
-      (decodedText) => {
-        if (!decodedText?.trim()) return;
-        void validateScan(decodedText.trim());
-      },
-      () => {}
-    );
+    let html5: Html5Qrcode;
+    try {
+      html5 = new Html5Qrcode(regionElementId, false);
+    } catch {
+      setCameraError("Scanner could not initialize.");
+      return;
+    }
+
+    scannerRef.current = html5;
+
+    const cameraConfig = {
+      fps: 10,
+      qrbox: { width: 250, height: 250 },
+      aspectRatio: 16 / 9,
+    };
+
+    const onDecode = (decodedText: string) => {
+      if (!decodedText?.trim()) return;
+      void validateScan(decodedText.trim());
+    };
+
+    /** Try constraint; reset element on failure so a second start isn’t wedged */
+    async function tryFacing(constraint: MediaTrackConstraints): Promise<boolean> {
+      try {
+        await html5!.start(constraint, cameraConfig, onDecode, () => {});
+        return true;
+      } catch {
+        await stopScanner(html5!);
+        return false;
+      }
+    }
+
+    if (await tryFacing({ facingMode: { ideal: "environment" } })) return;
+
+    html5 = new Html5Qrcode(regionElementId, false);
+    scannerRef.current = html5;
+
+    // Laptop / desktop usually only has an inward-facing webcam (“user”).
+    if (await tryFacing({ facingMode: { ideal: "user" } })) return;
+
+    html5 = new Html5Qrcode(regionElementId, false);
+    scannerRef.current = html5;
+
+    try {
+      const devices = await Html5Qrcode.getCameras();
+      const labeled =
+        devices.find((d) => /back|rear|environment/i.test(d.label)) ??
+        devices.find((d) => /front|user|fac/i.test(d.label)) ??
+        devices[devices.length - 1] ??
+        devices[0];
+      if (!labeled?.id) {
+        setCameraError("No camera found.");
+        scannerRef.current = null;
+        await stopScanner(html5);
+        return;
+      }
+      await html5.start(labeled.id, cameraConfig, onDecode, () => {});
+    } catch (e) {
+      scannerRef.current = null;
+      await stopScanner(html5);
+      const msg =
+        e instanceof DOMException && e.name === "NotAllowedError"
+          ? "Camera permission denied. Allow camera access for this site and try again."
+          : e instanceof DOMException && e.name === "NotReadableError"
+            ? "Camera is busy or unavailable. Close other apps using the webcam and reload."
+            : "Could not start the camera. In Chrome open the padlock beside the URL → Site settings → Camera → Allow.";
+      setCameraError(msg);
+    }
   }, [siteId, validateScan, regionElementId]);
 
   useEffect(() => {
     if (!siteId || scanResult !== null) {
-      if (scannerRef.current) {
-        void scannerRef.current.clear().catch(() => {});
+      void (async () => {
+        const s = scannerRef.current;
         scannerRef.current = null;
-      }
+        await stopScanner(s);
+      })();
       return;
     }
 
+    let cancelled = false;
     const t = requestAnimationFrame(() => {
-      initScanner();
+      void (async () => {
+        await initScanner();
+        if (cancelled && scannerRef.current) {
+          const s = scannerRef.current;
+          scannerRef.current = null;
+          await stopScanner(s);
+        }
+      })();
     });
 
     return () => {
+      cancelled = true;
       cancelAnimationFrame(t);
-      if (scannerRef.current) {
-        void scannerRef.current.clear().catch(() => {});
+      void (async () => {
+        const s = scannerRef.current;
         scannerRef.current = null;
-      }
+        await stopScanner(s);
+      })();
     };
   }, [siteId, scanResult, scannerRegionKey, initScanner]);
 
@@ -220,6 +313,12 @@ export default function VendorScanner() {
         {!siteId && (
           <div className="relative z-20 mb-4 max-w-xs rounded-2xl border border-amber-200 bg-amber-50 px-5 py-3 text-center text-sm font-medium text-amber-900">
             No site selected. Choose a site first.
+          </div>
+        )}
+
+        {siteId && cameraError && (
+          <div className="relative z-20 mb-4 max-w-sm rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-center text-sm font-medium text-red-900">
+            {cameraError}
           </div>
         )}
 
